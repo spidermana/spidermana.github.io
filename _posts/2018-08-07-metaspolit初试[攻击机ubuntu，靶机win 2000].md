@@ -209,7 +209,7 @@ LHOST为攻击机ip，RHOST为靶机IP
 
 **MS08_067漏洞是著名的远程溢出漏洞**，影响除Windows Server 2008 Core以外的所有Windows系统，包括：Windows 2000/XP/Server 2003/Vista/Server 2008的各个版本，甚至还包括测试阶段的Windows 7 Pro-Beta。本次实验就是metasploit利用ms08_067漏洞对win2000虚拟机进行渗透测试。
 
-**MS08_067是一个在windows445号端口上的漏洞，需要事先查看该端口是否开放[只有这个端口开放，才有可能进行这个漏洞的攻击]**，这里使用“nmap -PS 靶机ip”命令查看扫描所有开放的端口，发现445号端口开放。因此可以使用MS08_067漏洞进行exploit。
+**MS08_067是一个在windows445号端口上的漏洞，需要事先查看该端口是否开放[只有这个端口开放，才有可能进行这个漏洞的攻击]**，这里使用**“nmap -PS 靶机ip”**命令查看扫描所有开放的端口，发现445号端口开放。因此可以使用MS08_067漏洞进行exploit。
 
 ![路径下module2](/assets/img/24.png)
 
