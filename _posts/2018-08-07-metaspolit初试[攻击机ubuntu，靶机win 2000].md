@@ -175,7 +175,7 @@ LHOST为攻击机ip，RHOST为靶机IP
 
 用到这里你会发现其实msf模块的使用就像在使用一个磁盘管理器[不管是search 模块，use模块，路径都体现了这一点]。
 
-比如kali中，msf的路径为/usr/share/metasploit-framework 
+比如kali中，msf的路径为/usr/share/metasploit-framework【ubuntu下为/usr/opt/metasploit-framework/embedded/framework/modules】
 
 ![路径下msf](/assets/img/25.png)
 
