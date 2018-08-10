@@ -1,5 +1,5 @@
 ---
-title: ROPgadgets工具
+title: ROPgadget工具
 date: 2018-08-09 15:38:00
 tags:
 - CTF
@@ -72,10 +72,10 @@ Or installed from PyPi
 		    -c, --checkUpdateChecks if a new version is available
 		    --binary <binary>Specify a binary filename to analyze
 		    --opcode <opcodes>   Search opcode in executable segment
-		    --string <string>Search string in readable segment
-		    --memstr <string>Search each byte in all readable segment
+		    --string <string>Search string in readable segment  #！！！！
+		    --memstr <string>Search each byte in all readable segment   #！！！！
 		    --depth <nbyte>  Depth for search engine (default 10)
-		    --only <key> Only show specific instructions
+		    --only <key> Only show specific instructions  #！！！用“xxx | yyy”显示多个满足要求的
 		    --filter <key>   Suppress specific instructions
 		    --range <start-end>  Search between two addresses (0x...-0x...)
 		    --badbytes <byte>Rejects specific bytes in the gadget's address
