@@ -116,14 +116,74 @@ Or installed from PyPi
 
 跳转到0x00000000004008b3地址，就可以设置第一个函数参数，再ret到要去的函数。
 
-##  ##
+## 阅读一下链接 ##
 
-https://blog.csdn.net/silence_stone/article/details/42964997
+一、[一步一步学ROP之linux_x86篇](http://jaq.alibaba.com/community/art/show?spm=a313e.7916646.24000001.11.MtR4jX&articleid=403)
 
-参考链接：
+笔记：
+
+> gcc -fno-stack-protector -z execstack -o level1 level1.c
+
+这个命令编译程序。**-fno-stack-protector和-z execstack这两个参数会分别关掉DEP[堆栈不可执行]和Stack Protector[栈保护]**。
+
+![gdb调试目标程序，确定溢出点](/assets/img/abc0.jpg)
+
+正常的思维是使用gdb调试目标程序，然后查看内存来确定shellcode的位置。但当你真的执行exp[exploit]的时候你会发现shellcode压根就不在这个地址上！这是为什么呢？原因是gdb的调试环境会影响buf在内存中的位置，虽然我们**关闭了ASLR，但这只能保证buf的地址在gdb的调试环境中不变，但当我们直接执行./level1的时候，buf的位置会固定在别的地址上**
+
+最简单的方法就是开启core dump这个功能。
+
+![开启core dump](/assets/img/abc1.jpg)
+
+注意：第二行是设置产生core文件的存储路径，可以自行定义。
+
+开启之后，当出现内存错误的时候，系统会生成一个core dump文件在tmp目录下。然后我们再用gdb查看这个core文件就可以获取到buf真正的地址了。
+
+![gdb core文件](/assets/img/abc2.jpg)
+
+
+- ./level1运行，段错误：产生core文件
+- gdb 二进制文件 core文件
+- 确定buffer首地址[shellcode要放置的位置，用于ret返回用]
+
+因为溢出点是140个字节，再加上4个字节的ret地址，我们可以**计算出buffer的地址为$esp-144。通过gdb的命令 “x/10s $esp-144”，我们可以得到buf的地址为0xbffff290**。
+
+OK，现在溢出点，shellcode和返回值地址都有了，可以开始写exp了。
+
+**pwntools这个工具**，因为它可以非常方便的**做到本地调试和远程攻击的转换**。本地测试成功后只需要简单的修改一条语句就可以马上进行远程攻击。
+
+![本地调试/远程攻击](/assets/img/abc3.jpg)
+
+最终本地测试代码如下：
+
+![最终code](/assets/img/abc4.jpg)
+
+执行exp：
+
+![执行](/assets/img/abc5.jpg)
+
+
+接下来我们**把这个目标程序作为一个服务绑定到服务器的某个端口上，这里我们可以使用socat这个工具来完成**，命令如下：
+
+> socat TCP4-LISTEN:10001,fork EXEC: ./level1
+
+**随后这个程序的IO就被重定向到10001这个端口**上了，并且可以**使用 nc 127.0.0.1 10001来访问我们的目标程序服务**了。
+
+因为现在**目标程序是跑在socat的环境中，exp脚本除了要把p = process('./level1')换成p = remote('127.0.0.1',10001) 之外，ret的地址还会发生改变。解决方法还是采用生成core dump的方案，然后用gdb调试core文件获取返回地址。然后我们就可以使用exp进行远程溢出啦**！
+
+即在socat环境下，gdb level1 /../../core
+
+
+
+
+二、[一步一步学ROP之linux_x64篇](https://www.2cto.com/kf/201611/563061.html)
+或https://blog.csdn.net/zsj2102/article/details/78560300
+
+
+其他参考链接：
 
 [一步一步学ROP之gadgets和2free篇 – 蒸米](http://www.vuln.cn/6643)
 
-[一步一步学ROP之linux_x64篇](https://www.2cto.com/kf/201611/563061.html)
 
-[一步一步学ROP之linux_x86篇](http://jaq.alibaba.com/community/art/show?spm=a313e.7916646.24000001.11.MtR4jX&articleid=403)
+
+
+
