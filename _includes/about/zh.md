@@ -1,18 +1,15 @@
 > Pwn! Road Towards Execellent~
->
 > Add By WeChat ID: U2FsdGVkX1/Wgl9rwVIY6M2lrN9eUPtjJBkqKdOa/Is=
->
 > 【note: DES; key: hack】
 
 #### 我是谁? 
 
-![whoami](woami.jpg)
+![whoami](img/woami.jpg)
 
-你好，我是Pwn子——许大仙。
+你好，我是Pwn子——许大仙，大三安全Dog
 
-假如你也是个和韩商言一样喜欢CTF的Girl，快加我的微信！！
 
-目前我担任，我们队Fiat Lux的->菜鸡工作【不要去google了，咱们这个队有点惨，你知道就好了】。等我大四好好干活！！
+目前我担任，我们队Fiat Lux的->菜鸡工作【不要去google了，咱们这个队有点惨，你知道就好了:cry:】。等我大四好好干活！！
 
 ##### My Programming Languages Spectrum
 

