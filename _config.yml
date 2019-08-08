@@ -1,10 +1,10 @@
 # Site settings
-title: 许大仙's Litt1e Bl0g
-SEOTitle: 你的博客 | Your Blog
+title: 许大仙's Litt1ε Bl0g
+SEOTitle: B10g | FΓom 许大仙
 header-img: img/home-bg.jpg
-email: huxpro@gmail.com
+email: xuyiwen14@gmail.com
 description: "Pwn! Road Towards Execellent. Add By WeChat ID: U2FsdGVkX1/Wgl9rwVIY6M2lrN9eUPtjJBkqKdOa/Is=.【note: DES; key: hack】"
-keyword: ""
+keyword: "调皮/搞怪"
 url: "spiderman.github.io"              # your host, for absolute URL
 baseurl: ""         # for example, '/blog' if your blog hosted on 'host/blog'
 
@@ -12,11 +12,10 @@ baseurl: ""         # for example, '/blog' if your blog hosted on 'host/blog'
 
 # SNS settings
 RSS: false
-weibo_username:     huxpro
-zhihu_username:     huxpro
-github_username:    huxpro
+zhihu_username:     许大仙
+github_username:    spidermana
 #twitter_username:  huxpro
-facebook_username:  huxpro
+wechat_username:  许大仙
 
 
 
@@ -68,8 +67,8 @@ ga_domain: huangxuan.me
 
 # Sidebar settings
 sidebar: true                           # whether or not using Sidebar.
-sidebar-about-description: "写写代码，做做设计，看看产品。世界那么大，多玩玩看看。"
-sidebar-avatar: /img/avatar-hux.jpg      # use absolute URL, seeing it's used in both `/` and `/about/`
+sidebar-about-description: "哈？Pwn! Cool newbie"
+sidebar-avatar: /img/author.jpg      # use absolute URL, seeing it's used in both `/` and `/about/`
 
 
 
@@ -82,19 +81,10 @@ featured-condition-size: 1              # A tag will be featured if the size of 
 # Friends
 friends: [
     {
-        title: "Hux Blog",
-        href: "http://huangxuan.me"
+        title: "Xiao Blog",
+        href: "http://momomoxiaoxi.com/"
     },{
-        title: "Foo",
-        href: "#"
-    },{
-        title: "Bar",
-        href: "#"
-    },{
-        title: "Example Friends",
-        href: "#"
-    },{
-        title: "It helps SEO",
-        href: "#"
+        title: "Veritas501",
+        href: "https://veritas501.space/"
     }
 ]
