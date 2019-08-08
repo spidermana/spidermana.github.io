@@ -1,12 +1,12 @@
 # Site settings
-title: Your Blog
+title: 许大仙's Litt1e Bl0g
 SEOTitle: 你的博客 | Your Blog
 header-img: img/home-bg.jpg
 email: huxpro@gmail.com
-description: ""
+description: "Pwn! Road Towards Execellent. Add By WeChat ID: U2FsdGVkX1/Wgl9rwVIY6M2lrN9eUPtjJBkqKdOa/Is=.【note: DES; key: hack】"
 keyword: ""
-url: "http://huangxuan.me"              # your host, for absolute URL
-baseurl: "/huxblog-boilerplate"         # for example, '/blog' if your blog hosted on 'host/blog'
+url: "spiderman.github.io"              # your host, for absolute URL
+baseurl: ""         # for example, '/blog' if your blog hosted on 'host/blog'
 
 
 
