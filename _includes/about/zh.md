@@ -4,7 +4,7 @@
 
 #### 我是谁? 
 
-![whoami](img/woami.jpg)
+![whoami](https://github.com/spidermana/spidermana.github.io/blob/master/img/woami.jpg)
 
 你好，我是Pwn子——许大仙，大三安全Dog
 
@@ -13,11 +13,11 @@
 
 ##### My Programming Languages Spectrum
 
-|         | 💔️       | ❤️ ️                  | ❤️❤️ ️                  |
-| :------ | ------- | ------------------- | -------------------- |
-| 😏       |         |                     |                      |
-| 🧐       |         | `C++`  <br> `Hack`  | `SeCurIty`<br> `CTF` |
-| :happy: | `Shell` | `Python` `Assembly` | `pwn | re`           |
+|      | 💔️       | ❤️ ️                  | ❤️❤️ ️                  |
+| :--- | ------- | ------------------- | -------------------- |
+| 😏    |         |                     |                      |
+| 🧐    |         | `C++`  <br> `Hack`  | `SeCurIty`<br> `CTF` |
+| 🤓    | `Shell` | `Python` `Assembly` | `pwn | re`           |
 
 > 未完待续: `python` `C++` `go` `C#` `Assembly` `re` `pwn` `system security` `usercorn`
 
