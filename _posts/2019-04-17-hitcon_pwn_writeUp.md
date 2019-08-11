@@ -4,12 +4,12 @@ title: “hitcon pwn writeUp（一）”
 subtitle:   "新的一轮pwn训练…… "
 date: 2019-04-17 14:45:00
 author:     "许大仙"
-header-img: "img/post-bg-alibaba.jpg"
+header-img: "img/post-bg-alitrip.jpg"
 tags:
     - CTF
 ---
 
-[TOC]
+
 
 > 来自[HITCON pwn](https://github.com/scwuaptx/HITCON-Training)的练习
 
@@ -21,7 +21,7 @@ tags:
 
 这个系统调用指令是为进程制定而设计的，明确的选择取决于option。通过`man prctl`可以查看该函数说明。
 
-![使用到了option 38和22](C:\Users\asus\spidermana.github.io\assets\img\hitonlab22.png)
+![使用到了option 38和22](img\assets\img\hitonlab22.png)
 
 
 
@@ -31,7 +31,7 @@ option 38/22：
 
 `#define PR_GET_SECCOMP	21`: set process seccomp【secure computing】 mode ，这个模式限制了你能使用的系统调用。根据参数设置，只能想办法使用open,read,write这三个syscall来cat flag。
 
-![反编译情况](C:\Users\asus\spidermana.github.io\assets\img\hitonlab21.png)
+![反编译情况](img\assets\img\hitonlab21.png)
 
 
 
