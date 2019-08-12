@@ -21,7 +21,7 @@ tags:
 
 这个系统调用指令是为进程制定而设计的，明确的选择取决于option。通过`man prctl`可以查看该函数说明。
 
-![使用到了option 38和22](img/assets/img/hitonlab22.png)
+![使用到了option 38和22](/img/assets/img/hitonlab22.png)
 
 
 
@@ -96,13 +96,13 @@ cn.interactive()
 
 反汇编源文件，可知有栈溢出点，同时输入存储到&name中，name处于bss段
 
-![hitconlab31](C:\Users\asus\spidermana.github.io\assets\img\hitconlab31.png)
+![hitconlab31](/img/assets/img/hitconlab31.png)
 
 在gdb中run ret2sc文件【file ret2sc—b main—vmmap】，vmmap得到如下结果。
 
 name所在的bss段，在vmmap结果中可以看到rwx
 
-![hitconlab33](C:\Users\asus\spidermana.github.io\assets\img\hitconlab33.png)
+![hitconlab33](/img/assets/img/hitconlab33.png)
 
 **exp：**通过read(&name)写入shellcode+gets(&s)栈溢出，ret到bss段首。
 
@@ -112,7 +112,7 @@ name所在的bss段，在vmmap结果中可以看到rwx
 
 【平常一般是push参数1，push 参数2……】
 
-![1555491006628](C:\Users\asus\AppData\Roaming\Typora\typora-user-images\1555491006628.png)
+![1555491006628](/img/assets/img/1555491006628.png)
 
 因此<u>计算padding的时候对于char s; // [esp+1Ch] [ebp-14h]，要用 [esp+1Ch]</u> 。设置'a'\*0x1c+'bbbb'而非‘a’\*0x14+'bbbb'。
 
@@ -182,11 +182,11 @@ re.interactive()
   - 本题的int 80h系统调用，可以alt+b搜索`80CD`得到
   - CD 80为int 80h的二进制编码【0x80在高地址，0xCD在低地址】
 
-![](C:\Users\asus\spidermana.github.io\assets\img\hitconlab41.png)
+![](/img/assets/img/hitconlab41.png)
 
-![](C:\Users\asus\spidermana.github.io\assets\img\hitconlab43.png)
+![](/img/assets/img/hitconlab43.png)
 
-![](C:\Users\asus\spidermana.github.io\assets\img\hitconlab42.png)
+![](/img/assets/img/hitconlab42.png)
 
 本题通过shift+f12查看全局字符串并没有看到/bin/sh或者system函数等
 
@@ -238,8 +238,8 @@ cn.interactive()
 - 多次利用栈溢出漏洞：反复触发某个函数的漏洞，触发一次做一件事情，触发多次完成多件，而不是一次溢出全做好【这要求栈可溢出空间充足】。
   - 如果溢出一次的空间都做不了，那么这种方法可能无效
   - 或者不允许反复触发漏洞【如下这种情况】
-  - ![hitcon62](C:\Users\asus\spidermana.github.io\assets\img\hitcon62.png)
-  - ![hitcon61](C:\Users\asus\spidermana.github.io\assets\img\hitcon61.png)
+  - ![hitcon62](/img/assets/img/hitcon62.png)
+  - ![hitcon61](/img/assets/img/hitcon61.png)
 - 栈迁移：将ebp覆盖成我们构造的fake_ebp ，然后利用leave_ret这个gadget将esp劫持到fake_ebp的地址上，使得栈可溢出“空间变大”。
 
 ```python
@@ -432,9 +432,9 @@ p.interactive()
 >
 > c
 
-![输入"aa……aa"](C:\Users\asus\spidermana.github.io\assets\img\hitcon71.png)
+![输入"aa……aa"](/img/assets/img/hitcon71.png)
 
-![计算k](C:\Users\asus\spidermana.github.io\assets\img\hitcon72.png)
+![计算k](/img/assets/img/hitcon72.png)
 
 printf(&buf)中，buf的存储地址在`0xffffcf68`，距离第一个参数`0xffffcf44`，有0x24=36个字节。即9个4字节。因此<u>buf的存储地址在第10号参数位置</u>。
 
@@ -498,11 +498,11 @@ cn.recv()
 
 通过修改magic【位于bss段】触发if语句，从而执行`system("cat /home/craxme/flag");`等
 
-![](C:\Users\asus\spidermana.github.io\assets\img\hitconlab81.png)
+![](/img/assets/img/hitconlab81.png)
 
 ##### 确定偏移
 
-![](C:\Users\asus\spidermana.github.io\assets\img\hitconlab82.png)
+![](/img/assets/img/hitconlab82.png)
 
 通过输入`AAAA%x,%x,%x,%x,%x,%x,%x,%x,%x`，确定format字符串位于第7个参数位置。
 
@@ -510,7 +510,7 @@ cn.recv()
 
 因此可以使用`AAAA%n$x`来计算偏移。
 
-![](C:\Users\asus\spidermana.github.io\assets\img\hitconlab83.png)
+![](/img/assets/img/hitconlab83.png)
 
 ##### 任意地址写
 
@@ -633,7 +633,7 @@ cn.recv()
 cn.interactive()
 ```
 
-![](C:\Users\asus\spidermana.github.io\assets\img\hitconlab84.png)
+![](/img/assets/img/hitconlab84.png)
 
 ### lab9
 
@@ -664,7 +664,7 @@ cn.interactive()
 
 也就是如果addr=ret=①，那么%k$n修改的是②，或%ks读取的是②。即修改/读取ret指向地址的内容。
 
-![](C:\Users\asus\spidermana.github.io\assets\img\ret_addr.png)
+![](/img/assets/img/ret_addr.png)
 
 但是ret指向的地址下存储的是指令，此题没有修改的意义【或许可以把 ret下的指令修改成某些既定指令？，这样返回时可以执行指定指令】
 
@@ -756,7 +756,7 @@ int do_fmt()
 
 ##### 图解思路
 
-![利用思路题解](C:\Users\asus\spidermana.github.io\assets\img\hitconlab91.png)
+![利用思路题解](/img/assets/img/hitconlab91.png)
 
 注意：是不停的利用printf的格式化字符串漏洞【在不停的printf建栈和退栈中，完成的攻击过程，没有对do_fmt栈帧和play栈帧的退栈，因此可以构成攻击基础】。
 
