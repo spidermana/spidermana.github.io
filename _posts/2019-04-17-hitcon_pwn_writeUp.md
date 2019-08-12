@@ -5,6 +5,7 @@ subtitle:   "新的一轮pwn训练…… "
 date: 2019-04-17 14:45:00
 author:     "许大仙"
 header-img: "img/post-bg-alitrip.jpg"
+catalog: true
 tags:
     - CTF
 ---
@@ -31,7 +32,7 @@ option 38/22：
 
 `#define PR_GET_SECCOMP	21`: set process seccomp【secure computing】 mode ，这个模式限制了你能使用的系统调用。根据参数设置，只能想办法使用open,read,write这三个syscall来cat flag。
 
-![反编译情况](img\assets\img\hitonlab21.png)
+![反编译情况](/img/assets/img/hitonlab21.png)
 
 
 
@@ -314,7 +315,7 @@ read执行完，函数会被迁移到bss+0x500。
 
 ###### 迁移情况
 
-![img](https://img-blog.csdn.net/20180424220326436)
+![img](/img/assets/img/hitconadd.png)
 
 ###### 最后
 
@@ -762,7 +763,7 @@ int do_fmt()
 
 修改后的情况【盗图，地址不对，但是思路一致】如下:
 
-![img](https://upload-images.jianshu.io/upload_images/1731834-8206cd16fdb67dab.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/813/format/webp)
+![img](/img/assets/img/hitconadd2.png)
 
 ##### exp：
 
