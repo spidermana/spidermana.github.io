@@ -21,7 +21,7 @@ tags:
 
 这个系统调用指令是为进程制定而设计的，明确的选择取决于option。通过`man prctl`可以查看该函数说明。
 
-![使用到了option 38和22](img\assets\img\hitonlab22.png)
+![使用到了option 38和22](img/assets/img/hitonlab22.png)
 
 
 
@@ -90,7 +90,7 @@ cn.interactive()
 
 ### lab3
 
-![hitconlab32](C:\Users\asus\spidermana.github.io\assets\img\hitconlab32.png)
+![hitconlab32](https://spidermana.github.io/assets/img/hitconlab32.png)
 
 没有canary，还有rwx。
 
