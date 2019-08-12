@@ -3,6 +3,7 @@ layout: post
 title: 「JarvisOJ」Backdoor题解
 date: 2018-09-17 16:28:00
 author:     "许大仙"
+catalog: true
 tags:
     - CTF
 ---
@@ -22,11 +23,11 @@ FLAG：PCTF{参数的sha256}
 
 但是你在win10上执行，会提示：
 
-![运行vulnerable.exe](/assets/img/bd_error.jpg)
+![运行vulnerable.exe](/img/assets/img/bd_error.jpg)
 
 它用了msvcr100d.dll，这个库就是vc++的运行库文件就是vs编译时用debug版本，编译出来时用的dll。
 
-我本地没有这个dll，就网上找一个，放到当前目录就好：![http://www.duote.com/dll/msvcr100d_dll.html](http://www.duote.com/dll/msvcr100d_dll.html)
+我本地没有这个dll，就网上找一个，放到当前目录就好：[http://www.duote.com/dll/msvcr100d_dll.html](http://www.duote.com/dll/msvcr100d_dll.html)
 
 执行出来就是一个计算器，接下来开始找找后门吧。
 
@@ -172,7 +173,7 @@ signed int __cdecl wmain(int a1, int a2)
 分析到这里我们差不多已经可以确定溢出点了。我们只要给定命令行参数一个合适的值x[最后会赋值给v13]，通过给定较大的v13越界栈上的char Dest[2]。通过for ( i = 0; i < v13; ++i ) Dest[i] = 'A';将栈上布满padding：A。
 又由于* (_DWORD *)Source = 0x7FFA4512;和strcpy(&Dest[v13], Source);使得Dest[v13]会得到一个jmp esp的地址。假如正好Dest[v13]对应栈上返回地址的位置，那么我们的程序就会跳转到jmp esp指令执行，jmp esp将返回地址后面的4字节内存单元的数据作为地址，跳转。假如这个地址被我们设置成一个恶意程序地址[本题中设置的是一个开启计算器程序的首地址]，那么攻击就实现了。所以这就是一个有后门的程序[存在缺陷，可以相应实施攻击]
 
-![攻击思路](bdattack.jpg)
+![攻击思路](/img/assets/img/bdattack.jpg)
 
 
 总的来说，那个v13就是padding的长度，我们的输入就是合适的offset ^ 0x6443[这样就抵消了v13 ^= 0x6443u中的异或]。
@@ -181,7 +182,7 @@ signed int __cdecl wmain(int a1, int a2)
 
 PS：在反汇编窗口中双击变量，就可以得到静态栈帧布局
 
-![wmain的栈帧情况](/assets/img/dbstack1.jpg)
+![wmain的栈帧情况](/img/assets/img/dbstack1.jpg)
 
 和反汇编结果的注释一致：
 
@@ -228,7 +229,7 @@ int __cdecl sub_401000(char *Source)
 
 这里把Source赋值给了Dest，而Source在main中就是Dest[]（ main中strcpy(&Dest[v13], Source);中为Dest[v13]后加了NULL，strcpy：把从src地址开始且含有NULL结束符的字符串复制到以dest开始的地址空间），所以在这个函数栈中，Dest得到了前面的paddings('A')+0x7FFA4512。
 
-![sub_401000的静态栈结构](/assets/img/dbstack2.jpg)
+![sub_401000的静态栈结构](/img/assets/img/dbstack2.jpg)
 
 既然有v13可以设置padding大小，还有0x7FFA4512。那么可以尝试在sub_401000(Dest);里进行栈溢出。
 
@@ -271,7 +272,7 @@ print "PCTF{" + hashlib.sha256(a).hexdigest() + "}"
 
 flag : PCTF{2b88144311832d59ef138600c90be12a821c7cf01a9dc56a925893325c0af99f}
 
-![计算结果](/assets/img/bd_attack.jpg)
+![计算结果](/img/assets/img/bd_attack.jpg)
 
 所以输入命令行的参数就是gb[b:0x00^0x64,g:0x24^0x43]，对字符串而言，b为高地址，转化成int v13后，高地址的b就对应v13的高位[v13可是__int 16，两字节的]，所以v13就是0x0024
 

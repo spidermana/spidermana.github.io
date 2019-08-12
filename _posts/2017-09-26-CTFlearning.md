@@ -4,6 +4,7 @@ title: "杂到不知道该取什么标题"
 subtitle:   "毫无方向之CTF小白入门的艰难之路……"
 date: 2017-09-26 15:44:03
 author:     "许大仙"
+catalog: true
 tags:
     - 杂文
 ---
