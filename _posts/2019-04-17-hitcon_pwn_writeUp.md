@@ -90,7 +90,7 @@ cn.interactive()
 
 ### lab3
 
-![hitconlab32](https://spidermana.github.io/assets/img/hitconlab32.png)
+![hitconlab32](/img/assets/img/hitconlab32.png)
 
 没有canary，还有rwx。
 
