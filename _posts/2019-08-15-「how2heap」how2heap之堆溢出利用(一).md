@@ -1,9 +1,9 @@
 ---
 layout:     post
 title:      "「how2heap」how2heap之堆溢出利用(一)"
-subtitle:   "newbie的堆溢出利用之路开启啦！本章讲first_fit/fastbin_dup/fastbin_dup_into_stack/fastbin_dup_consolidate/unsafe_unlink"
+subtitle:   "newbie的堆溢出利用之路开启啦！本章讲first_fit/fastbin_dup/_into_stack/_consolidate/unsafe_unlink"
 date:       2019-08-15 10:16:00
-header-img: "img/post-bg-re-vs-ng2.jpg"
+header-img:   "img/post-bg-re-vs-ng2.jpg"
 author:     "许大仙"
 catalog: true
 tags:
