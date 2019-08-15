@@ -8,7 +8,6 @@ author:     "许大仙"
 catalog: true
 tags:
     - CTF
-typora-root-url: ..
 ---
 
 堆溢出的学习之路必须从[how2heap](https://github.com/shellphish/how2heap)开始！
