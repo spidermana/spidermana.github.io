@@ -11,3 +11,7 @@ $ git clone git@github.com:Huxpro/huxblog-boilerplate.git
 ```
 
 **[View Boilerplate Here &rarr;](http://huangxuan.me/huxblog-boilerplate/)**
+
+## Blog Establish
+
+emoji table：https://www.webfx.com/tools/emoji-cheat-sheet/
