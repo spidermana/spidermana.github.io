@@ -1,6 +1,6 @@
 # Spidermana Blog
 
-![my blog home](/img/newposts/myblog.png)
+![my blog home](/img/myblog.png)
 
 [**View my Blog Here !!!**](https://spidermana.github.io)
 
