@@ -4,18 +4,21 @@
 
 #### 我是谁? 
 
-![whoami](https://github.com/spidermana/spidermana.github.io/blob/master/img/woami.jpg)
+![whoami](/img/woami.jpg)
 
-你好，我是Pwn子——许大仙，大三安全Dog
+你好，我是许大仙！很高兴见到你哦！
 
+恭喜你捕获一只在CTF pwn方向学习的[小白][1]。
 
-目前我担任，我们队Fiat Lux的->菜鸡工作【不要去google了，咱们这个队有点惨，你知道就好了:cry:】。等我大四好好干活！！
+目前我担任，我们队Fiat Lux的->菜鸡工作【不要去google了，咱们这个队有点惨，你知道就好了:cry:】。
+
+等我大四一定好好干活！！
 
 ##### My Programming Languages Spectrum
 
 |      | 💔️       | ❤️ ️                  | ❤️❤️ ️                  |
 | :--- | ------- | ------------------- | -------------------- |
-| 😏    |         |                     |                      |
+| 😏    |         |                     | `go`                 |
 | 🧐    |         | `C++`  <br> `Hack`  | `SeCurIty`<br> `CTF` |
 | 🤓    | `Shell` | `Python` `Assembly` | `pwn | re`           |
 
@@ -23,5 +26,5 @@
 
 ##### Post recommended
 
-[1]: //huangxuan.me/2015/07/09/js-module-7day/
-[2]: //huangxuan.me/2015/12/28/css-sucks-2015/
+[1]: https://spidermana.github.io/2019/08/01/unicorn%E6%BA%90%E7%A2%BC%E8%A7%A3%E6%9E%90%E4%B8%80/
+[2]: https://spidermana.github.io/2019/05/25/MIT-6.828-Lab1/

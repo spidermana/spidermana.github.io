@@ -268,7 +268,7 @@ glibc 检查代码:
 
 #### 1.malloc的分配过程
 
-推荐曾经写的[「堆漏洞」堆结构复习之malloc和free的过程]([https://spidermana.github.io/2019/04/19/%E5%A0%86%E7%AC%94%E8%AE%B0/](https://spidermana.github.io/2019/04/19/堆笔记/))
+推荐曾经写的[「堆漏洞」堆结构复习之malloc和free的过程](https://spidermana.github.io/2019/04/19/堆笔记/)
 
 以下简述一下：
 
