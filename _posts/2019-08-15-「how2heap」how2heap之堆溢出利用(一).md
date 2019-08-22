@@ -773,7 +773,7 @@ pwndbg> x/10xg 0x602050
 
 
 
-unlink攻击的效果其实是<u>，让一个指针指向一个离其存储地址很近的某个位置，通过偏移修改其存储位置下的内容，也就是间接修改了这个指针的指向，从而首先对任意地址的读写操作。</u>
+unlink攻击的效果其实是<u>，让一个指针指向一个离其存储地址很近的某个位置，通过偏移修改其存储位置下的内容，也就是间接修改了这个指针的指向，从而实现对任意地址的读写操作。</u>
 
 #### 5.其他
 
@@ -801,7 +801,7 @@ unlink攻击的效果其实是<u>，让一个指针指向一个离其存储地�
 
 验证：如果修改chunk F的size字段为别的值，确实是会看到`corrupted size vs. prev_size`！因此这个检查依旧在，只是unlink源码中不直接可见。
 
-#### 参考链接
+#### 6.参考链接
 
 - [看很全又很杂的unsafe_unlink部分吧](https://zoepla.github.io/2018/05/how2heap系列(基础篇)/)
 - [讲了unlink时候size字段的设置](https://www.anquanke.com/post/id/86808)
@@ -810,5 +810,10 @@ unlink攻击的效果其实是<u>，让一个指针指向一个离其存储地�
 
 
 
+## 最后
 
+请期待how2heap(二)的学习吧！
 
+#### 附上malloc和free的全部过程图！
+
+![malloc和free](/img/how2heap/malloc_free.png)
