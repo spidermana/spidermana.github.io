@@ -1,7 +1,7 @@
 ---
 layout:     post
 title: “hitcon pwn writeUp（一）”
-subtitle:   "新的一轮pwn训练…… "
+subtitle:   "完成lab1-lab10啦…… "
 date: 2019-04-17 14:45:00
 author:     "许大仙"
 header-img: "img/post-bg-alitrip.jpg"
