@@ -587,7 +587,7 @@ unlink的源码：
 1374 }
 ```
 
-在解链之前，有一个unlink的防护，即检查FD->bk  || BK->fd 是否等于P【`__builtin_expect (FD->bk != P || BK->fd != P, 0)`】，也就是说如果我们直接对FD【P->fd】，或者BK【P->bk】直接赋值的方法，是无法绕过这个检查的，会直接corrupt。
+在解链之前，有一个unlink的防护，即检查FD->bk  \|\| BK->fd 是否等于P【`__builtin_expect (FD->bk != P || BK->fd != P, 0)`】，也就是说如果我们直接对FD【P->fd】，或者BK【P->bk】直接赋值的方法，是无法绕过这个检查的，会直接corrupt。
 
 也就是说我们对chunkP的fd和bk字段的覆盖必须满足：
 
