@@ -102,7 +102,7 @@ int __cdecl print_note_content(int a1)
   - 一个为8B【实际为（8+4）align 8B = 16B=0x10】
   - 一个为32B【实际为40B=0x28】
 - 添加note2，大小为32（不要求是fastbin大小），内容随意
-- 添加note3，大小为32（不要求是fastbin大小），内容随意【这一步可以不要】
+- 添加note3，大小为32（不要求是fastbin大小），内容随意【这一步可以不要，主要是避免和顶块的合并】
 - del掉note1
 - del掉note2
 
@@ -118,7 +118,7 @@ int __cdecl print_note_content(int a1)
   - **但是注意之前的note1、note2、note3的content的大小对齐后，实际大小不等于16，是为了此时分配16B的note4 content时不会被分配到之前的content的bin上，而是分配到notelist的bin上**
   - 将notelist和content的链分开
 - 同时向note4 content中写入magic的函数地址，也就相对应向note1_notelist(8大小)写入magic的函数地址
-- 此时原本存放puts函数指针的地方被magic函数覆盖了，也就导致了接下来打印note1内容的时候会直接执行magic【调用notelist[1]的第一个字段指向的地址】
+- 对于note1，原本存放puts函数指针的地方被magic函数覆盖了，也就导致了接下来打印note1内容的时候会直接执行magic【调用notelist[1]的第一个字段指向的地址】
 - 调用print_note打印note1的内容，执行magic函数【note1在[0,count]的范围内，允许打印】
 
 #### exp

@@ -1127,7 +1127,16 @@ fprintf(stderr, "... new string: %s\n", bss_var);
 malloc(Large);
 ```
 
-用malloc申请了这个chunk之后top chunk则被设置到Ctrl_addr，再次分配则可得到该地址下的可控chunk
+用malloc申请了这个chunk之后top chunk则被设置到Ctrl_addr，再次分配则可得到该地址下的可控chunk。
+
+**注意：**这里并不是只能切割top chunk达到在heap高地址处的任意地址，而是任意地址，比heap低的地址也完全可以【可能就是malloc(负数)，比如此题的bss段变量就是更低的地址，malloc的字节数为0xfffffffffecf3f30，实际是一个负数】。
+
+```c++
+remainder      = chunk_at_offset(victim, nb); //如果nb为负数，则remainder的地址比victim低，否则比victim高
+av->top        = remainder;
+/* Treat space at ptr + offset as a chunk */
+#define chunk_at_offset(p, s) ((mchunkptr)(((char *) (p)) + (s)))
+```
 
 #### 参考链接
 
