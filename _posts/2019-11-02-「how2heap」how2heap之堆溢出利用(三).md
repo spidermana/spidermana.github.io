@@ -22,7 +22,7 @@ tags:
            <li>CVE复现篇</li>
            <li>编译原理——中科大课程（B站）</li>
            <li>metasploit魔鬼训练营</li>
-           <li>雅思7.0</li>
+           <li>雅思7.0+日常英文听力训练</li>
            <li>Pwn题两天【一道+一篇blog】，加速呀！</li>
     </ul>
 </details>
@@ -278,6 +278,153 @@ $10 = 0x7d8
 
 ## unsorted bin into stack
 
+unsorted-bin-into-stack 通过改写 unsorted bin 里 chunk 的 bk 指针到任意地址，从而在栈上 malloc 出 chunk，并且还可以得到heap基地址信息。
+
+#### 攻击过程
+
+前期，先malloc一个chunk作为攻击对象victim，然后在malloc另外一个chunk避免free(victim)的时候，造成其和top chunk合并。
+
+```c++
+//Allocating the victim chunk
+intptr_t* victim = malloc(0x100);
+//Allocating another chunk to avoid consolidating the top chunk with the small one during the free()
+intptr_t* p1 = malloc(0x100);
+```
+
+接下来`free(victim)`，由于victim不在fast bin范围内，因此被放入unsorted bin中：
+
+```c++
+fprintf(stderr, "Freeing the chunk %p, it will be inserted in the unsorted bin\n", victim);
+free(victim);
+/*
+pwndbg> unsortedbin 
+unsortedbin
+all: 0x7ffff7dd1b78 (main_arena+88) —▸ 0x602000 ◂— 0x7ffff7dd1b78
+
+pwndbg> heap
+0x602000 PREV_INUSE {   //chunk victim
+  prev_size = 0x0, 
+  size = 0x111, 
+  fd = 0x7ffff7dd1b78 <main_arena+88>, 
+  bk = 0x7ffff7dd1b78 <main_arena+88>, 
+  fd_nextsize = 0x0, 
+  bk_nextsize = 0x0
+}
+……
+*/
+```
+
+然后我们要在栈上伪造一个chunk，让其加入unsorted bin中，并能使其满足下一个malloc分配。
+
+```c++
+intptr_t stack_buffer[4] = {0}; //首地址为chunk头地址
+//Create a fake chunk on the stack");
+//Set size for next allocation and the bk pointer to any writable address
+//创建一个size=0x110的chunk，
+stack_buffer[1] = 0x100 + 0x10;
+//并且设置一个bk指针，指向任意可写地址【出发unlink的时候会对该地址写】
+stack_buffer[3] = (intptr_t)stack_buffer;
+/*
+pwndbg> print stack_buffer 
+$4 = {0x0, 0x110, 0x0, 0x7fffffffddf0}
+pwndbg> print &stack_buffer 
+$5 = (intptr_t (*)[4]) 0x7fffffffddf0
+*/
+```
+
+假设此时有一个堆溢出漏洞，可以修改 victim 的内容，我们将修改其size字段使其不能满足下一个malloc的分配，但却可以用fake stack chunk满足分配。再者修改bk字段，使得将fake stack chunk引入unsorted bin中。
+
+因此我们修改 size 为 32，victim 的 bk 指向 stack_buffer。
+
+**注意：**
+
+- unsorted bin是FIFO的分配/遍历顺序并找第一个合适的chunk进行切割或直接分配（first-fit）
+- 而Fast bin是后进先出，即LIFO
+- [参考First-fit behavior](https://heap-exploitation.dhavalkapil.com/attacks/first_fit.html)
+
+```c++
+//Now emulating a vulnerability that can overwrite the victim->size and victim->bk pointer
+//Size should be different from the next request size to return fake_chunk and need to pass the check 2*SIZE_SZ (> 16 on x64) && < av->system_mem
+//注意这里覆写的victim的size字段要绕过下一个malloc request【使得fake stack chunk能够被满足】，并且size满足check：2*SIZE_SZ (> 16 on x64，最小chunk大小) && < av->system_mem（最大chunk大小，小于分配区总量）
+  victim[-1] = 32;
+//伪造victim->bk指向stack中fake stack chunk的chunk头地址
+  victim[1] = (intptr_t)stack_buffer; // victim->bk is pointing to stack
+```
+
+此时heap的情况如下：
+
+![](/img/how2heap/unsortedstack1_1.png)
+
+由于fake chunk 已经被链接在 unsorted bin 中。下一次 malloc 时，malloc 会顺着 bk 指针进行遍历，这样就可以找到大小正好合适的 fake stack chunk 了。
+
+> unsorted bin：stack_buffer[0x7fffffffddf0]<-victim[0x602000]
+
+由于fake stack chunk是由后来的victim->bk指向的，因此对于unsorted bin这样FIFO，是通过定位最后一个chunk【即victim】，再通过bk指针往前找。
+
+因此victim的size【size=0x20】一定要不满足malloc要求，才会first-fit到stack buffer【size=0x110】。
+
+#### 攻击效果
+
+##### 得到栈上的chunk
+
+最后malloc(0x100)【实际真实大小会需要0x110】，匹配得到stack上的chunk，触发unlink解链。
+
+```c++
+fprintf(stderr, "Now next malloc will return the region of our fake chunk: %p\n", &stack_buffer[2]);
+fprintf(stderr, "malloc(0x100): %p\n", malloc(0x100));
+//malloc(0x100): 0x7fffffffde00
+//即分配到栈上的chunk
+```
+
+此时chunk的状态如下:
+
+![](/img/how2heap/unsortedstack1_2.png)
+
+可以看到malloc返回了fake stack_buffer的mem地址【0x7fffffffde00】。
+
+##### 泄露libc基地址
+
+同时可以观察到stack_buffer[2]字段原来是`0x0`，现在变成`0x7ffff7dd1b78 <main_arena+88>`【这个是unsortedbin的head，也是原来victim的fd字段】，通过在栈上查看这个值【因为我们可以访问stack_buffer】，我们可以得到main_area的地址。一旦获取到main_arena的地址，因为main_arena存在于libc.so中就可以**计算偏移得出libc.so的基地址**
+
+该值产生的原因在于unlink解链victim。
+
+>unlink(victim):
+>
+>victim->fd->bk = victim ->bk  #修改的是unsorted bin的头
+>
+>victim->bk->fd = victim ->fd  
+>
+>victim ->bk指向stack chunk , 即victim->bk->fd=stack chunk -> fd=stack_buffer[2] = victim->fd = 0x7ffff7dd1b78 <main_arena+88>
+>
+>也就是使得stack chunk的fd字段设置为unsorted bin的head地址,从而可以泄露libc基地址
+
+**猜测：**由于本人对unsorted bin内部的分配规则还没有很清晰，猜测是从victim开始遍历，先看victim满不满足size，不满足就unlink(victim)整合到small bins中。然后再考虑遍历下一个【通过victim在unlink前的bk指针】，也就是fake stack chunk，发现满足，则unlink(stack_buffer)用于分配给用户。
+
+因此unlink(victim)后整合到small bins，然后unlink(stack_buffer)。
+
+此时stack_buffer的情况应该是：
+
+- fd=0x7ffff7dd1b78 <main_arena+88>
+- bk=0x7fffffffddf0 <stack_buffer首地址> 【这个未变】
+
+>unlink(stack_buffer):
+>
+>stack_buffer->fd->bk = stack_buffer ->bk  #修改的是unsorted bin的头
+>
+>stack_buffer->bk->fd = stack_buffer->fd   #stack_buffer->bk->fd指向的是stack_buffer[2]【即stack_buffer->fd】，自身覆盖自身，没变
+
+最后可以看到，victim chunk 被从 unsorted bin 中取出来放到了 small bin 中【整合】。
+
+![](/img/how2heap/unsortedstack1_3.png)
+
+注意：libc-2.27 环境下的版本，需要注意的是由于 tcache 的影响，`stack_buf[3]` 不能再设置成任意地址。
+
+#### 参考链接
+
+- https://qrzbing.cn/2019/07/10/how2heap-4/#unsorted-bin-into-stack
+- https://xz.aliyun.com/t/2855#toc-0
+- https://firmianay.gitbooks.io/ctf-all-in-one/doc/3.1.8_heap_exploit_3.html#unsorted_bin_into_stack
+
 ## unsorted bin attack
 
 > This file demonstrates unsorted bin attack by write a large unsigned long value into stack。
@@ -287,6 +434,8 @@ $10 = 0x7d8
 这个攻击手段**一般不单独使用，而是为更进一步的攻击做准备**。通过这种攻击方法，可以向栈中**复写**入一个unsigned long的值。
 
 比如：写入的位置是libc中global_max_fast【fastbin中最大chunk的上限设置】的位置，<u>写入一个很大的unsigned long</u>以后，这之后可以进行针对fastbin的更进一步攻击。
+
+主要是通过控制 unsorted bin chunk 的 bk 指针，分配时进行unlink 操作将 chunk 从链表中移除，就可以向任意位置写入一个指针【如果是unsorted bin中的第一个chunk，也就是会写入fd指针的值，从而泄露main_area。】
 
 #### 攻击过程
 
@@ -383,17 +532,47 @@ p->fd->bk 即为0x7ffff7dd1b78加3个单元赋值为p->bk=0x7fffffffddf8【这�
 
 #### 攻击效果
 
-这也算是unlink的另一种用法，<u>**unsafe_unlink**通过unlink来直接控制地址，这里则是通过unlink来泄漏libc的信息，来进行进一步的攻击。【知道了libc中unsorted bin head的地址，从而可以得到libc的基地址等】</u>
+这也算是unlink的另一种用法，<u>**unsafe_unlink**通过unlink来直接控制地址，这里则是通过unlink来泄漏libc的信息，来进行进一步的攻击。【知道了libc中unsorted bin head(main_arena)的地址，从而可以得到libc的基地址等】</u>
 
 和**house_of_lore**操作有点像，也是通过修改victim的bk字段，不过我们做这个的主要目的不是返回一个可控的地址，而是将libc的信息写到了我们可控的区域。
 
 ![](/img/how2heap/unsorted1_4.png)
+
+#### 补充
+
+- 一旦获取到某个堆块的地址就可以通过malloc的size进行计算从而获得堆基地址。
+- 一旦获取到main_arena的地址，因为main_arena存在于libc.so中就可以计算偏移得出libc.so的基地址。 
+
+往往通过unsorted bin可以获得：1.libc.so的基地址 2.heap基地址
+
+#### 参考链接
+
+- [通过堆中的unsorted bin、fastbin、smallbin进行信息泄露](https://wiki.x10sec.org/pwn/heap/leak_heap/#unsorted-bin)
+
+一旦获取到某个堆块的地址就可以通过malloc的size进行计算从而获得堆基地址。一旦获取到main_arena的地址，因为main_arena存在于libc.so中就可以计算偏移得出libc.so的基地址。 因此，通过unsorted bin可以获得：1.libc.so的基地址 2.heap基地址
 
 ## house of einherjar
 
 
 
 ## house of orange
+
+
+
+
+
+#### 参考链接
+
+- https://qrzbing.cn/2019/07/19/how2heap-5/#how2heap-5
+- https://tac1t0rnx.space/2018/01/10/house-of-orange/
+
+## house of leamon
+
+
+
+#### 参考链接
+
+- https://tac1t0rnx.space/2019/07/18/house-of-leamon/
 
 
 
