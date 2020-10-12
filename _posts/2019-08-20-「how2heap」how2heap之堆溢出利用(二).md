@@ -25,6 +25,16 @@ The House of Chaos
 
 接下来继续跟着how2heap学堆溢出的攻击姿势吧！
 
+更新：
+
+```
+还有
+House of Einherjar
+House of Orange
+House of Rabbit
+……
+```
+
 ## House of Spirit——将heap劫持到stack
 
 在2009年，Phrack 66期上也刊登了一篇名为"Malloc Des-Maleficarum"的文章，对前面提到的这几种技术进行了进一步的分析，在这其中，House of Spirit是与fastbin相关。
@@ -1144,3 +1154,125 @@ av->top        = remainder;
 - [House of force from 安全客](https://www.anquanke.com/post/id/86809)
 - [The Malloc Maleficarum](https://dl.packetstormsecurity.net/papers/attack/MallocMaleficarum.txt)
 - [House of force from heap-exploitation](https://heap-exploitation.dhavalkapil.com/attacks/house_of_force.html)
+
+## House Of Einherjar
+
+简单来说，该攻击就是通过`off by one`漏洞，来修改下一个堆块的`PREV_IN_USE`位或是`prev_size`，从而触发后向合并。可以造成以下后果：
+
+- 前一个块`unlink`操作【引发unlink相关攻击】
+- 与被溢出块的合并的块之间出现`overlap`
+- 通过控制`prev_size`字段，控制合并后的free堆块位置【产生一个任意位置空闲堆块，插入unsorted bin中】，使得下一次malloc能返回一个几乎任意地址的 chunk。
+
+### 攻击原理
+
+在`free`函数中，要判断当前free的堆块的前一个堆块是否是释放状态，如果是则触发后向合并。
+
+具体的代码如下：
+
+```c
+/* consolidate backward */
+if (!prev_inuse(p)) {             
+    prevsize = p->prev_size;             
+    size += prevsize;             
+    p = chunk_at_offset(p, -((long) prevsize));
+    unlink(p, bck, fwd);           
+}
+/* …… */
+ clear_inuse_bit_at_offset(nextchunk, 0); 
+
+```
+
+如果当前 chunk 的前一个 chunk 空闲，则将当前 chunk 与前一个 chunk 合并成一个空闲 chunk，由于前一个 chunk 空闲，则当前 chunk 的 prev_size 保存了前一个 chunk 的大小，计算出合并后的chunk大小，并获取前一个chunk的指针，将前一个chunk从空闲链表中删除。 
+
+而后，将合并后的 chunk 加入 unsorted bin 的双向循环链表中。‘
+
+在进一步介绍之前，已知以下知识
+
+- **两个物理相邻的 chunk 会共享 `prev_size`字段，尤其是当低地址的 chunk 处于使用状态时，高地址的 chunk 的该字段便可以被低地址的 chunk 使用。**因此，我们<u>有希望可以通过写低地址 chunk 覆盖高地址 chunk 的 `prev_size` 字段</u>。
+  - 当`PREV_IN_USE`有效（为1）时，`prev_size`不可以被当前块使用【有check约束】，而是属于上一个块。
+  - 当`PREV_IN_USE`无效时，`prev_size`可以被当前块使用，而是属于当前块。
+- 一个 chunk PREV_INUSE 位标记了其物理相邻的低地址 chunk 的使用状态，而且该位是和 prev_size 物理相邻的。
+- 后向合并时，<u>新的 chunk 的位置取决于 `chunk_at_offset(p, -((long) prevsize))`</u> 。
+  - 也就是说前一个块的位置，可以由当前块的`prev_size`字段决定。
+
+**综上，如果我们可以同时控制一个 chunk prev_size 与 PREV_INUSE 字段，那么我们就可以将新的 chunk 指向几乎任何位置。**
+
+接下来详细说明攻击的流程。
+
+**1.溢出前** 
+
+假设溢出前的状态如下，前一个块p0为“in use”，但存在对前一个块的overflow机会。
+
+![img](https://ctf-wiki.github.io/ctf-wiki/pwn/linux/glibc-heap/figure/einherjar_before_overflow.png)
+
+**2.溢出过程** 
+
+现假设前一个块p0
+
+- 一方面可以写 prev_size 字段
+- 另一方面，存在 off by one 的漏洞，可以写下一个 chunk 的 PREV_INUSE 部分，那么：
+
+当前块p1的`PREV_IN_USE`位和`prev_size`字段都会被修改。
+
+<img src="https://ctf-wiki.github.io/ctf-wiki/pwn/linux/glibc-heap/figure/einherjar_overflowing.png" alt="img" style="zoom:50%;" />
+
+**3.溢出后**
+
+**假设将 p1 的 prev_size 字段设置为想要的目的 chunk 位置与 p1 的差值**。
+
+那么在溢出后，我们释放 p1，则我们所得到的新的 chunk 的位置 `chunk_at_offset(p1, -((long) prevsize))` 就是我们想要的 chunk 位置了。
+
+也就是说我们可以获得一个任意位置的空闲堆块了。
+
+但是！需要注意的是，由于这里会**对新的 chunk【即上一个堆块】 进行 unlink**【从bins中解链，合并后再重新插入】，因此需要确保在对应 chunk 位置构造好了 fake chunk 以便于绕过 unlink 的检测。
+
+<img src="https://ctf-wiki.github.io/ctf-wiki/pwn/linux/glibc-heap/figure/einherjar_after_overflow.png" alt="img" style="zoom: 43%;" />
+
+unlink检测需要注意以下两点：
+
+- 对FD、BK的检查：
+
+```c
+// fd bk
+if (__builtin_expect (FD->bk != P || BK->fd != P, 0))                      \
+  malloc_printerr (check_action, "corrupted double-linked list", P, AV);  \
+```
+
+- 对size、prev_size的检查：
+
+```c
+ // 由于P已经在双向链表中，所以有两个地方记录其大小，所以检查一下其大小是否一致。
+if (__builtin_expect (chunksize(P) != prev_size (next_chunk(P)), 0))      \
+      malloc_printerr ("corrupted size vs. prev_size");               \
+```
+
+一般使用如下方式绕过：
+
+```c
+fakeFD -> bk == P <=> *(fakeFD + 12) == P
+fakeBK -> fd == P <=> *(fakeBK + 8) == P
+//即
+fakeFD = p->fd = &p-3*4
+fakeBK = p->bk = &p-2*4
+/* 最终结果：
+如果让 fakeFD + 12 和 fakeBK + 8 指向同一个指向 P 的指针，那么：
+*P = P - 8
+*P = P - 12
+即通过此方式，P 的指针指向了比自己低 12 的地址处。
+需要注意的是，这里我们并没有违背对size检测的约束，因为P在 Unlink前是指向正确的 chunk 的指针。
+*/
+```
+
+或者设置next chunk 的 fd 和 bk 均为 nextchunk 的地址也是可以绕过unlink检测的。但是这样的话，并不能达到修改指针内容的效果。
+
+### 攻击条件
+
+如果要利用House Of Einherjar攻击，需要具备如下条件：
+
+- 需要有溢出漏洞，如`off by one`：至少可以可以写物理相邻的高地址的 `prev_size`字段和`PREV_IN_USE`位。
+- 需要泄露地址：因为需要计算目的 chunk 与 p1 地址之间的差。
+- 需要构造fake chunk：需要在目的 chunk 附近构造相应的 fake chunk，从而绕过 unlink 的检测。
+
+### 参考链接
+
+- [CTF wiki——house_of_einherjar](https://ctf-wiki.github.io/ctf-wiki/pwn/linux/glibc-heap/house_of_einherjar-zh/)
