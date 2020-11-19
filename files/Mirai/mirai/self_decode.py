@@ -14,5 +14,5 @@ def unlock(buf, len):
     print("".join(new))
     return buf
 
-buf = "\x4C\x43\x4F\x47\x51\x47\x50\x54\x47\x50\x02\x22"
+buf = "\x99\xC7"
 unlock(buf,len(buf))

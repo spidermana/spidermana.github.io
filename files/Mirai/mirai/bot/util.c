@@ -185,7 +185,7 @@ char *util_itoa(int value, int radix, char *string)
     return string;
 }
 
-//在内存中查找特定的字节序
+//在buf中查找mem参数指定的字节序
 int util_memsearch(char *buf, int buf_len, char *mem, int mem_len)
 {
     int i, matched = 0;
@@ -193,7 +193,7 @@ int util_memsearch(char *buf, int buf_len, char *mem, int mem_len)
     if (mem_len > buf_len)
         return -1;
 
-    for (i = 0; i < buf_len; i++)
+    for (i = 0; i < buf_len; i++)  //逻辑不对，util_memsearch("aabc", 4, "abc", 3)就不满足【原本的实际意义应该是要在buf中查找连续mem子串的】
     {
         if (buf[i] == mem[matched])
         {

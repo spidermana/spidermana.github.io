@@ -17,7 +17,7 @@
 #include "killer.h"
 #include "table.h"
 #include "util.h"
-
+//kill模块，此模块主要有两个作用，其一是关闭特定的端口并占用，另一是删除特定文件并kill对应进程，简单来说就是排除异己。
 int killer_pid;
 char *killer_realpath;
 int killer_realpath_len = 0;
