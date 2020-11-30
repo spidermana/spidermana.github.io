@@ -4,7 +4,7 @@
 #include <string.h>
 #include "headers/includes.h"
 #include "headers/telnet_info.h"
-
+//telnet_info.c  解析约定格式的telnet信息
 struct telnet_info *telnet_info_new(char *user, char *pass, char *arch, ipv4_t addr, port_t port, struct telnet_info *info)
 {
     if (user != NULL)

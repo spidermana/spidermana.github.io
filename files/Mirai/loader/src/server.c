@@ -15,7 +15,7 @@
 #include "headers/connection.h"
 #include "headers/binary.h"
 #include "headers/util.h"
-
+//server.c       向感染设备发起telnet交互，上传payload文件
 struct server *server_create(uint8_t threads, uint8_t addr_len, ipv4_t *addrs, uint32_t max_open, char *wghip, port_t wghp, char *thip)
 {
     struct server *srv = calloc(1, sizeof (struct server));

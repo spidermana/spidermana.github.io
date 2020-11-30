@@ -9,7 +9,7 @@
 #include "headers/server.h"
 #include "headers/binary.h"
 #include "headers/util.h"
-
+//判断loader和感染设备telnet交互过程中的状态信息
 void connection_open(struct connection *conn)
 {
     pthread_mutex_lock(&conn->lock);

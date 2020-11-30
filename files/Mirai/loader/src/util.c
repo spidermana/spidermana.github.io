@@ -8,7 +8,7 @@
 #include "headers/includes.h"
 #include "headers/util.h"
 #include "headers/server.h"
-
+//util.c         一些常用的公共函数
 void hexDump (char *desc, void *addr, int len) {
     int i;
     unsigned char buff[17];

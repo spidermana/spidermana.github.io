@@ -8,6 +8,7 @@
 static int bin_list_len = 0;
 static struct binary **bin_list = NULL;
 
+//将bins目录下的文件读取到内存中，以echo方式上传payload文件时用到
 BOOL binary_init(void)
 {
     glob_t pglob;
