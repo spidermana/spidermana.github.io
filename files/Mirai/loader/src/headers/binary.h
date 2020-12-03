@@ -6,8 +6,8 @@
 
 struct binary {
     char arch[6];
-    int hex_payloads_len;
-    char **hex_payloads;
+    int hex_payloads_len;   //hex_payloads_len表示hex_payloads有多少个128字节单元【第一维的char*指针有多少】
+    char **hex_payloads;    //bins的内容
 };
 
 BOOL binary_init(void);

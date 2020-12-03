@@ -37,8 +37,8 @@ struct connection {
     struct {
         char data[512];
         int deadline;
-    } output_buffer;
-    uint16_t rdbuf_pos, timeout;
+    } output_buffer;    //这个连接可以发送的缓冲区
+    uint16_t rdbuf_pos, timeout;    //rdbuf这个连接收到的信息、rdbuf_pos可读取信息的长度【下一个可存储的空位置】
     BOOL open, success, retry_bin, ctrlc_retry;
     uint8_t rdbuf[8192];
 };

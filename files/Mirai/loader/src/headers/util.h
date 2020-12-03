@@ -61,9 +61,17 @@
 #define EM_AVR32        0x18ad  /* Atmel AVR32 */
 
 struct elf_hdr {
-    uint8_t e_ident[EI_NIDENT];
+    uint8_t e_ident[EI_NIDENT]; //ELF标识,用于告知系统如何去解码ELF文件
+    //magic number：【0x7f 45 4c 46】
+    //e_ident[EI_CLASS] ：一字节标识32位【0x1】或64位【0x2】
+    //e_ident[EI_DATA]指明了目标文件中的数据编码格式，1小端、2大端
+    //e_ident[EI_VERSION]指明 ELF 文件头的版本，目前这个版本号是 EV_CURRENT，即“1”
+    //从 e_ident[EI_PAD]到 e_ident[EI_NIDENT-1]之间的 9 个字节目前暂时不使用，留作以后扩展，在实际的文件中应被填 0 补充，其它程序在读取 ELF 文件头时应该忽略这些字节。
     uint16_t e_type, e_machine;
+    //e_type:此字段表明本目标文件属于哪种类型，ET_REL可重定位？ET_EXEC可执行【0x02 0x00】？ET_DYN动态链接库文件？【2字节】
+    //e_machine：指定该文件适用的处理器体系结构【2字节】，SPARC【02 00】、i386【03 00】、mips【08 00】、x86_64【3e 00】
     uint32_t e_version;
+    //目标文件的版本：EV_CURRENT 是一个动态的数字，表示最新的版本。尽管当前最新的版本号就是“1”，但如果以后有更新的版本的话，EV_CURRENT 将被更新为更大的数字，而目前的“1”将成为历史版本。
 } __attribute__((packed));
 
 int util_socket_and_bind(struct server *srv);

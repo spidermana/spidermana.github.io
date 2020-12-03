@@ -160,7 +160,7 @@ int main(int argc, char **args)
     scanner_init();
 #endif
 #endif
-
+    
     while (TRUE)
     {
         fd_set fdsetrd, fdsetwr, fdsetex;
