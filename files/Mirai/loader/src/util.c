@@ -70,14 +70,15 @@ void hexDump (char *desc, void *addr, int len) {
     printf ("  %s\n", buff);    //如果未满16个字节，那么最后的buff不会在for循环中打印，因此这里要补打印。
 }
 
-//bind可用地址并设置socket为非阻塞模式
+//bind本地地址并设置socket为非阻塞模式
+//srv->bind_addrs中存储了多个本地地址的集合，绑定任何一个可绑定的都可以
 int util_socket_and_bind(struct server *srv)
 {
     struct sockaddr_in bind_addr;
     int i, fd, start_addr;
     BOOL bound = FALSE;
 
-    if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1)   //新建socket
         return -1;
 
     bind_addr.sin_family = AF_INET;
@@ -91,7 +92,7 @@ int util_socket_and_bind(struct server *srv)
         if (bind(fd, (struct sockaddr *)&bind_addr, sizeof (struct sockaddr_in)) == -1)
         {
             if (++start_addr == srv->bind_addrs_len) //index++
-                start_addr = 0;
+                start_addr = 0; //超出范围，就index=0开始
         }
         else
         {

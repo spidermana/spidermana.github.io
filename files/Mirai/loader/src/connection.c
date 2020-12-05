@@ -31,7 +31,7 @@ void connection_open(struct connection *conn)
     conn->rdbuf_pos = 0;
     conn->last_recv = time(NULL);
     conn->timeout = 10;
-    conn->echo_load_pos = 0;    //echo bianry已经load到哪里了，初始为0
+    conn->echo_load_pos = 0;    //标记echo bianry已经load到哪里了，初始为0
     conn->state_telnet = TELNET_CONNECTING;
     conn->success = FALSE;
     conn->open = TRUE;  //表示已经要打开connection连接【close时，该项置为false】
@@ -44,7 +44,7 @@ void connection_open(struct connection *conn)
     pthread_mutex_unlock(&conn->lock);
 }
 
-//
+//关闭连接，修改对应参数
 void connection_close(struct connection *conn)
 {
     pthread_mutex_lock(&conn->lock);
@@ -388,7 +388,7 @@ int connection_consume_psoutput(struct connection *conn)
     }
 }
 
-//cat /proc/mounts，查看挂在了哪些文件系统
+//cat /proc/mounts，查看挂在了哪些文件系统【之后通过执行/bin/busybox cat /proc/mounts的结果，切换到可写目录】
 int connection_consume_mounts(struct connection *conn)
 {
     char linebuf[256];
