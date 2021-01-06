@@ -14,7 +14,7 @@ struct connection {
     time_t last_recv;
     enum {
         TELNET_CLOSED,          // 0
-        TELNET_CONNECTING,      // 1
+        TELNET_CONNECTING,      // 1 [新建的时候是这个状态]
         TELNET_READ_IACS,       // 2
         TELNET_USER_PROMPT,     // 3
         TELNET_PASS_PROMPT,     // 4
