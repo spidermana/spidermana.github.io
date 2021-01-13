@@ -472,4 +472,4 @@ linux的可执行程序在执行的时候默认是先搜索/lib和/usr/lib这两
 
 mips架构通用寄存器命名
 
-![mips架构通用寄存器命名](http://imgtec.eetrend.com/sites/imgtec.eetrend.com/files/201706/blog/9927-27954-mipsjiagou-1.png)
+![mips架构通用寄存器命名](/assets/img/9927-27954-mipsjiagou-1.png)
