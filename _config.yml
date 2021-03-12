@@ -77,6 +77,9 @@ sidebar-avatar: /img/author.jpg      # use absolute URL, seeing it's used in bot
 featured-tags: true                     # whether or not using Feature-Tags
 featured-condition-size: 1              # A tag will be featured if the size of it is more than this condition value
 
+# gallery without plugins
+imagesurl: "/gallery/img/"
+thumbsurl: "/gallery/thumbs/"
 
 
 # Friends
@@ -89,6 +92,6 @@ friends: [
         href: "https://veritas501.space/"
     },{
         title: "Aurora",
-        href: "Aurora.kim"
+        href: "https://Aurora.kim"
     }
 ]
