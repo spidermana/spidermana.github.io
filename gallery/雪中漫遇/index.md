@@ -5,3 +5,11 @@ type: "galleries"
 layout: "galleries"
 password: 
 ---
+
+hello2
+
+
+
+here is gallery home.
+
+{% include image-gallery.html folder="/gallery/thumbs" %}
