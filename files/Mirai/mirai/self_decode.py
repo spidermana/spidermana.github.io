@@ -14,5 +14,5 @@ def unlock(buf, len):
     print("".join(new))
     return buf
 
-buf = "\x22\x35"
+buf = "\x70\x67\x72\x6D\x70\x76\x02\x07\x51\x18\x07\x51\x22"
 unlock(buf,len(buf))

