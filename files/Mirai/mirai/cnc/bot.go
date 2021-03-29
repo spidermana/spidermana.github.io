@@ -4,7 +4,7 @@ import (
     "net"
     "time"
 )
-
+// Bot结构体
 type Bot struct {
     uid     int
     conn    net.Conn

