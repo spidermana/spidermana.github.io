@@ -1,0 +1,10 @@
+"filename", "language", "Go", "comment", "blank", "total"
+"e:\github_repository\spidermana.github.io\files\Mirai\mirai\cnc\admin.go", "Go", 248, 2, 20, 270
+"e:\github_repository\spidermana.github.io\files\Mirai\mirai\cnc\api.go", "Go", 82, 17, 10, 109
+"e:\github_repository\spidermana.github.io\files\Mirai\mirai\cnc\attack.go", "Go", 327, 33, 25, 385
+"e:\github_repository\spidermana.github.io\files\Mirai\mirai\cnc\bot.go", "Go", 31, 1, 6, 38
+"e:\github_repository\spidermana.github.io\files\Mirai\mirai\cnc\clientList.go", "Go", 116, 3, 15, 134
+"e:\github_repository\spidermana.github.io\files\Mirai\mirai\cnc\constants.go", "Go", 37, 0, 3, 40
+"e:\github_repository\spidermana.github.io\files\Mirai\mirai\cnc\database.go", "Go", 130, 9, 16, 155
+"e:\github_repository\spidermana.github.io\files\Mirai\mirai\cnc\main.go", "Go", 95, 2, 20, 117
+"Total", "-", 1066, 67, 115, 1248

