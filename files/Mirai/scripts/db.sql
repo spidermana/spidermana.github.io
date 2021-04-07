@@ -11,7 +11,8 @@ CREATE TABLE `history` (
   KEY `user_id` (`user_id`)
 );
 
-CREATE TABLE `users` (
+
+CREATE TABLE `users` (  #购买mirai服务的用户
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `username` varchar(32) NOT NULL,
   `password` varchar(32) NOT NULL,

@@ -127,7 +127,7 @@ func (this *ClientList) worker() {
 		case <-this.cntView: //查看目前管理了多少bot
 			this.cntView <- this.count
 			break
-		case <-this.distViewReq: //查看bot的分布情况，对bot的来源进行计数?
+		case <-this.distViewReq: //查看bot的分布情况，对bot的来源进行计数?【有Distribution()的调度】
 			res := make(map[string]int)
 			for _, v := range this.clients {
 				if ok, _ := res[v.source]; ok > 0 {
@@ -136,7 +136,7 @@ func (this *ClientList) worker() {
 					res[v.source] = 1
 				}
 			}
-			this.distViewRes <- res
+			this.distViewRes <- res //将bot的分布输出到distViewRes管道，在Distribution()函数中获取并返回
 		}
 	}
 }

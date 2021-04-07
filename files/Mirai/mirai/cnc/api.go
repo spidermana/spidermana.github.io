@@ -25,7 +25,7 @@ func (this *Api) Handle() {
 	// Get command
 	//这里需要注意setDeadline和timesout的区别
 	//前者是一个固定时间点，后者是一个可以不断复用的时间
-	//简单来说对一个连接而言，设置Deadline之后，除非你重新调用SetDeadline，否则这个Deadline不会变化。
+	//简单来说对一个连接而言，设置Deadline之后，除非你重新调用SetDeadline，否则这个Deadline不会变化。【当连接的I/O操作超过这个时间点而没有完成时，便会因为超时失败。】
 	//一次到时后，时间会永远继续往下走，如果不重新设置，这个ddl不会二次触发了。
 	//前面也提了，Deadline是一个绝对的时间点。因此，如果要通过SetDeadline来设置timeout，就不得不在每次执行Read/Write前重新调用它。
 	//你可能并不想直接调用SetDeadline方法，而是选择 net/http提供的更上层的方法。
