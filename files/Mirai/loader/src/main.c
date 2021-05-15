@@ -50,7 +50,7 @@ int main(int argc, char **args)
 
     if (argc == 2)
     {
-        id_tag = args[1];
+        id_tag = args[1];   //download的方式
     }
 
     if (!binary_init())
