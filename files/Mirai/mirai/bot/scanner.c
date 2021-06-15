@@ -304,7 +304,7 @@ void scanner_init(void)
 
         //以下根据连接的状态【+重连】，加入fdset集合。
         // Load file descriptors into fdsets
-        FD_ZERO(&fdset_rd); /*将set清零使集合中不含任何fd*/
+        FD_ZERO(&fdset_rd); /* 将set清零使集合中不含任何fd */
         FD_ZERO(&fdset_wr);
         for (i = 0; i < SCANNER_MAX_CONNS; i++)
         {
