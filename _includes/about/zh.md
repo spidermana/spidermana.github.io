@@ -50,16 +50,6 @@ Zijing Yin, <u>Yiwen Xu</u>, Fuchen Ma, Haohao Gao, Lei Qiao, Yu Jiang.
 
 <u>Yiwen Xu</u>, Yu Jiang, Lu Yu, Juan Li.
 
-
-### Internship
-
-Security Researcher at [Singularity Security Lab](https://github.com/singularseclab), from Jun 2022 to Aug 2022.
-
-**Working on Kernel Vulnerability Exploitation and Malicious APK Analysis**
-
-- Exploitation of a N-day data race vulnerability(CVE-2020-29660) of PTY subsystem in Linux Kernel 4.19 to achieve the privilege escalation, which can also be exploited on Android Kernel 4.4.
-- Analyzing behaviors of malicious APKs using Frida and Java decompiler. Also with other researchers, establishing a run-time behavior analysis sandbox on Android 12 for unknown potential threats.
-
 ### Hobby
 
 1. **Fingerstyle Guitar**
