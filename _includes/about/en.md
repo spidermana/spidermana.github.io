@@ -11,7 +11,3 @@
    
      现在大佬聚集的[小组](http://www.wingtecher.com/person)内打工。
    
-   
-     ##### News
-   
-     Gallery is ready!

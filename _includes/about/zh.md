@@ -8,58 +8,47 @@ Please drop me an email ([xuyiwen14@gmail.com](mailto:xuyiwen14@gmail.com)) to c
 
 **2020–2023 Tsinghua University, Software Engineering, Supervised by [Prof. Yu Jiang](https://sites.google.com/site/jiangyu198964).**
 
-- Ranking – 5/84, GPA – 3.95/4.00
-
 **2016–2020 Hunan University, Information(Cyber) Security.**
-
-- Ranking – 1/47, GPA – 3.91/4.00
 
 ### Research Interests
 
 - **IoT Security**
 
-- **Vulnerability Exploitation or CTF PWN**
-
 - **Fuzzing**
 
-- **Operating System**
+- **Cloud Security**
 
 
 
 ### Publications
 
-**Midas: Safeguarding IoT Devices Against Malware via Real-Time Behavior Auditing.** (*EMSOFT’22*)
-
-<u>Yiwen Xu*</u>, Zijing Yin* (Co-First), Yiwei Hou, Yu Jiang.
+- **Automatic Policy Synthesis and Enforcement for Protecting Untrusted Deserialization** (*NDSS'24*) Quan Zhang, <u>Yiwen Xu</u>, Zijing Yin, Chijin Zhou, and Yu Jiang
 
 
-**Empirical Study of System Resources Abused by IoT Attackers.** (*ASE’22*)
+- **Building Dynamic System Call Sandbox with Partial Order Analysis** (OOPSLA'23) Quan Zhang, Chijin Zhou, <u>Yiwen Xu</u>, Zijing Yin, Mingzhe Wang, Zhuo Su, Chengnian Sun, Yu Jiang, and Jiaguang Sun
 
-Zijing Yin*, <u>Yiwen Xu* (Co-First)</u>, Chijin Zhou, Yu Jiang.
+- **Midas: Safeguarding IoT Devices Against Malware via Real-Time Behavior Auditing.** (*EMSOFT’22*) <u>Yiwen Xu*</u>, Zijing Yin* (Co-First), Yiwei Hou, Yu Jiang.
+
+- **Empirical Study of System Resources Abused by IoT Attackers.** (*ASE’22*) Zijing Yin*, <u>Yiwen Xu* (Co-First)</u>, Chijin Zhou, Yu Jiang.
 
 
-**EM-Fuzz: Augmented Firmware Fuzzing via Memory Checking.** (*EMSOFT’20 - <span style="color:red">Best Paper Nominee</span>.*)
+- **EM-Fuzz: Augmented Firmware Fuzzing via Memory Checking.** (*EMSOFT’20 - <span style="color:red">Best Paper Nominee</span>.*) Jian Gao, <u>Yiwen Xu</u>, Yu Jiang, Zhe Liu,Wanli Chang, Xun Jiao, Jiaguang Sun.
 
-Jian Gao, <u>Yiwen Xu</u>, Yu Jiang, Zhe Liu,Wanli Chang, Xun Jiao, Jiaguang Sun.
+- **Scanner++: Enhanced Vulnerability Detection of Web Applications with Attack Intent Synchronization.** (*TOSEM’21*) Zijing Yin, <u>Yiwen Xu</u>, Fuchen Ma, Haohao Gao, Lei Qiao, Yu Jiang.
 
-**Scanner++: Enhanced Vulnerability Detection of Web Applications with Attack Intent Synchronization.** (*TOSEM’21*)
-
-Zijing Yin, <u>Yiwen Xu</u>, Fuchen Ma, Haohao Gao, Lei Qiao, Yu Jiang.
-
-**Brief Industry Paper: Catching IoT Malware in the Wild Using HoneyIoT.** (*RTAS’21*)
-
-<u>Yiwen Xu</u>, Yu Jiang, Lu Yu, Juan Li.
 
 ### Hobby
 
-1. **Fingerstyle Guitar**
-   - Love playing songs, like [Red shoes dance](https://www.youtube.com/watch?v=EYS2dRY3GME), [Let It Go](https://www.youtube.com/watch?v=AAnID4RS7Vg), [Say Something](https://www.youtube.com/watch?v=LpjR3yyBi3E), [Closer](https://www.youtube.com/watch?v=xV4FIEIqhYo), etc.
-   - Enjoy music from my favorite fingersyle guitarist [*Kotaro Oshio*](https://www.youtube.com/watch?v=7x9Yxna7pE4), a super star in many Asian countries and playing many beautiful songs. Everyone can listen his music time after time from sunrise till sunset!!!
+1. **PADI-Certified Scuba Diver**
+   
+   - Protect marine life and our oceans deserve better.
 
-2. **Photography**
+2. **Fingerstyle Guitar and Piano**
+   - Love playing songs, like [Red shoes dance](https://www.youtube.com/watch?v=EYS2dRY3GME), [Let It Go](https://www.youtube.com/watch?v=AAnID4RS7Vg), [Say Something](https://www.youtube.com/watch?v=LpjR3yyBi3E), [Closer](https://www.youtube.com/watch?v=xV4FIEIqhYo), etc.
+   - Enjoy music from my favorite fingersyle guitarist [*Kotaro Oshio*](https://www.youtube.com/watch?v=7x9Yxna7pE4), a super star in many Asian countries and playing many beautiful songs.
+
+3. **Photography**
    - Record slight changes in my life, keeping me motivated to take more photos.
    - See the [Gallery](http://xudaxian.xyz/gallery/) Tab of my blog.
 
-3. **Badminton** 
-   - Keep exercising
-   - Happy teamwork and cooperation with my doubles partners.
+4. **Outdoor hiking enthusiast** 
