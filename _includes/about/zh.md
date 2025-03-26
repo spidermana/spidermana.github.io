@@ -1,6 +1,6 @@
 ### About me 🤓
 
-[Yiwen Xu](https://sites.google.com/view/intro-yiwenxu) is a security researcher and a postgraduate student at *Tsinghua University*, focusing on migitations against IoT malware attacks and also keen to vulnerability exploitation skills as well as fuzzing.
+[Yiwen Xu](https://sites.google.com/view/intro-yiwenxu) is a a postgraduate student at *Tsinghua University*, focusing on malware migitation and also keen to fuzzing.
 
 Please drop me an email ([xuyiwen14@gmail.com](mailto:xuyiwen14@gmail.com)) to contact if anything meets your interests.
 
@@ -8,7 +8,7 @@ Please drop me an email ([xuyiwen14@gmail.com](mailto:xuyiwen14@gmail.com)) to c
 
 **2020–2023 Tsinghua University, Software Engineering, Supervised by [Prof. Yu Jiang](https://sites.google.com/site/jiangyu198964).**
 
-**2016–2020 Hunan University, Information(Cyber) Security.**
+**2016–2020 Hunan University, Information Security.**
 
 ### Research Interests
 
