@@ -6,7 +6,7 @@ Please drop me an email ([xuyiwen14@gmail.com](mailto:xuyiwen14@gmail.com)) to c
 
 ### Education
 
-**2020–2023 Tsinghua University, Software Engineering, Supervised by [Prof. Yu Jiang](https://sites.google.com/site/jiangyu198964).**
+**2020–2023 Tsinghua University, Software Engineering.**
 
 **2016–2020 Hunan University, Information Security.**
 
