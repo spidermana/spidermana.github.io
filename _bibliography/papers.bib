@@ -1,0 +1,134 @@
+---
+---
+
+@string{aps = {American Physical Society,}}·
+
+
+
+@article{xu2022midas,
+  abbr={Midas},
+  title={MIDAS: safeguarding iot devices against malware via real-time behavior auditing},
+  author={Xu*, Yiwen and Yin*, Zijing and Hou, Yiwei and Liu, Jianzhong and Jiang, Yu},
+  journal={IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems (TCAD)},
+  volume={41},
+  number={11},
+  pages={4373--4384},
+  year={2022},
+  selected={true},
+  publisher={IEEE},
+  doi={10.1109/TCAD.2022.3200908},
+  preview={midas.png}
+}
+
+@inproceedings{10.1145/3597503.3639090,
+author = {Hou, Yiwei and Guo, Lihua and Zhou, Chijin and Xu, Yiwen and Yin, Zijing and Li, Shanshan and Sun, Chengnian and Jiang, Yu},
+title = {An Empirical Study of Data Disruption by Ransomware Attacks},
+year = {2024},
+isbn = {9798400702174},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3597503.3639090},
+doi = {10.1145/3597503.3639090},
+abstract = {The threat of ransomware to the software ecosystem has become increasingly alarming in recent years, raising a demand for large-scale and comprehensive ransomware analysis to help develop more effective countermeasures against unknown attacks. In this paper, we first collect a real-world dataset MarauderMap, consisting of 7,796 active ransomware samples, and analyze their behaviors of disrupting data in victim systems. All samples are executed in isolated testbeds to collect all perspectives of six categories of runtime behaviors, such as API calls, I/O accesses, and network traffic. The total logs volume is up to 1.98 TiB. By assessing collected behaviors, we present six critical findings throughout ransomware attacks' data reconnaissance, data tampering, and data exfiltration phases. Based on our findings, we propose three corresponding mitigation strategies to detect ransomware during each phase. Experimental results show that they can enhance the capability of state-of-the-art anti-ransomware tools. We report a preliminary result of a 41\%-69\% increase in detection rate with no additional false positives, showing that our insights are helpful.},
+booktitle = {Proceedings of the IEEE/ACM 46th International Conference on Software Engineering (ICSE)},
+articleno = {161},
+numpages = {12},
+keywords = {ransomware, data disruption, runtime behaviors, mitigation strategies, empirical study},
+location = {Lisbon, Portugal},
+preview={ransom.png},
+series = {ICSE '24}
+}
+
+
+@ARTICLE{9211428,
+  abbr={EM-Fuzz},
+  author={Gao, Jian and Xu, Yiwen and Jiang, Yu and Liu, Zhe and Chang, Wanli and Jiao, Xun and Sun, Jiaguang},
+  journal={ACM SIGBED International Conference on Embedded Software (EMSOFT)}, 
+  title={EM-Fuzz: Augmented Firmware Fuzzing via Memory Checking (Best Paper Candidate)}, 
+  year={2020},
+  volume={39},
+  number={11},
+  pages={3420-3432},
+  keywords={Fuzzing;Memory management;Instruments;Tools;Micromechanical devices;Design automation;Integrated circuits;Embedded firmware;guided fuzzing;memory checking;vulnerability},
+  doi={10.1109/TCAD.2020.3013046},
+  preview={emfuzz.png}
+}
+
+@article{10.1145/3517036,
+abbr={Scanner++},
+author = {Yin, Zijing and Xu, Yiwen and Ma, Fuchen and Gao, Haohao and Qiao, Lei and Jiang, Yu},
+title = {Scanner++: Enhanced Vulnerability Detection of Web Applications with Attack Intent Synchronization},
+year = {2023},
+issue_date = {January 2023},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {32},
+number = {1},
+issn = {1049-331X},
+url = {https://doi.org/10.1145/3517036},
+doi = {10.1145/3517036},
+abstract = {Scanners are commonly applied for detecting vulnerabilities in web applications. Various scanners with different strategies are widely in use, but their performance is challenged by the increasing diversity of target applications that have more complex attack surfaces (i.e., website paths) and covert vulnerabilities that can only be exploited by more sophisticated attack vectors (i.e., payloads). In this paper, we propose Scanner++, a framework that improves web vulnerability detection of existing scanners through combining their capabilities with attack intent synchronization. We design Scanner++ as a proxy-based architecture while using a package-based intent synchronization approach. Scanner++ first uses a purification mechanism to aggregate and refine attack intents, consisting of attack surfaces and attack vectors extracted from the base scanners’ request packets. Then, Scanner++ uses a runtime intent synchronization mechanism to select relevant attack intents according to the scanners’ detection spots to guide their scanning process. Consequently, base scanners can expand their attack surfaces, generate more diverse attack vectors and achieve better vulnerability detection performance.For evaluation, we implemented and integrated Scanner++ together with four widely used scanners, BurpSuite, AWVS, Arachni, and ZAP, testing it on ten benchmark web applications and three well-tested real-world web applications of a critical financial platform from our industry partner. Working under the Scanner++ framework helps BurpSuite, AWVS, Arachni, and ZAP cover 15.26\%, 37.14\%, 59.21\%, 68.54\% more pages, construct 12.95\texttimes{}, 1.13\texttimes{}, 15.03\texttimes{}, 52.66\texttimes{} more attack packets, and discover 77, 55, 77, 176 more bugs, respectively. Furthermore, Scanner++ detected eight serious previously unknown vulnerabilities on real-world applications, while the base scanners only found three of them.},
+journal = {ACM Transactions on Software Engineering and Methodology (TOSEM)},
+month = feb,
+articleno = {7},
+numpages = {30},
+keywords = {synchronization, attack intent, scanner, Web security},
+preview={scanner.png}
+}
+
+@inproceedings{10.1145/3551349.3556901,
+abbr={HoneyAsclepius},
+author = {Yin*, Zijing and Xu*, Yiwen and Zhou, Chijin and Jiang, Yu},
+title = {Empirical Study of System Resources Abused by IoT Attackers},
+year = {2023},
+isbn = {9781450394758},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3551349.3556901},
+doi = {10.1145/3551349.3556901},
+abstract = {IoT devices have been under frequent attacks in recent years, causing severe impacts. Previous research has shown the evolution and features of some specific IoT malware families or stages of IoT attacks through offline sample analysis. However, we still lack a systematic observation of various system resources abused by active attackers and the malicious intentions behind these behaviors. This makes it difficult to design appropriate protection strategies to defend against existing attacks and possible future variants. In this paper, we fill this gap by analyzing 117,862 valid attack sessions captured by our dedicated high-interaction IoT honeypot, HoneyAsclepius, and further discover the intentions in our designed workflow. HoneyAsclepius enables high capture capability as well as continuous behavior monitoring during active attack sessions in real-time. Through a large-scale deployment, we collected 11,301,239 malicious behaviors originating from 50,594 different attackers. Based on this information, we further separate the behaviors in different attack sessions targeting distinct categories of system resources, estimate the temporal relations and summarize their malicious intentions behind. Inspired by such investigations, we present several key insights about abusive behaviors of the file, network, process, and special capability resources, and further propose practical defense strategies to better protect IoT devices.},
+booktitle = {Proceedings of the 37th IEEE/ACM International Conference on Automated Software Engineering (ASE)},
+articleno = {39},
+numpages = {13},
+keywords = {Behavior Intention, IoT Attack, System Resource Abuse},
+location = {Rochester, MI, USA},
+selected={true},
+series = {ASE '22},
+preview={study.png}
+}
+
+
+@inproceedings{zhang2024automatic,
+  abbr={DeseriGuard},
+  title={Automatic policy synthesis and enforcement for protecting untrusted deserialization},
+  author={Zhang, Quan and Xu, Yiwen and Yin, Zijing and Zhou, Chijin and Jiang, Yu},
+  booktitle={The Network and Distributed System Security Symposium (NDSS) Symposium},
+  html={https://www.ndss-symposium.org/ndss-paper/automatic-policy-synthesis-and-enforcement-for-protecting-untrusted-deserialization/},
+  abstract = {Java deserialization vulnerabilities have long been a grave security concern for Java applications. By injecting malicious objects with carefully crafted structures, attackers can reuse a series of existing methods during deserialization to achieve diverse attacks like remote code execution. To mitigate such attacks, developers are encouraged to implement policies restricting the object types that applications can deserialize. However, the design of precise policies requires expertise and significant manual effort, often leading to either the absence of policy or the implementation of inadequate ones. In this paper, we propose DeseriGuard, a tool designed to assist developers in securing their applications seamlessly against deserialization attacks. It can automatically formulate a policy based on the application's semantics and then enforce it to restrict illegal deserialization attempts. First, DeseriGuard utilizes dataflow analysis to construct a semantic-aware property tree, which records the potential structures of deserialized objects. Based on the tree, DeseriGuard identifies the types of objects that can be safely deserialized and synthesizes an allowlist policy. Then, with the Java agent, DeseriGuard can seamlessly enforce the policy during runtime to protect various deserialization procedures. In evaluation, DeseriGuard successfully blocks all deserialization attacks on 12 real-world vulnerabilities. In addition, we compare DeseriGuard's automatically synthesized policies with 109 developer-designed policies. The results demonstrate that DeseriGuard effectively restricts 99.12% more classes. Meanwhile, we test the policy-enhanced applications with their unit tests and integration tests, which demonstrate that DeseriGuard's policies will not interfere with applications' execution and induce a negligible time overhead of 2.17%.},
+  month = feb,
+  selected={true},
+  year={2024},
+  preview={deserial.png}
+}
+
+@article{10.1145/3622842,
+abbr={Dynbox},
+author = {Zhang, Quan and Zhou, Chijin and Xu, Yiwen and Yin, Zijing and Wang, Mingzhe and Su, Zhuo and Sun, Chengnian and Jiang, Yu and Sun, Jiaguang},
+title = {Building Dynamic System Call Sandbox with Partial Order Analysis},
+year = {2023},
+issue_date = {October 2023},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {7},
+number = {OOPSLA2},
+url = {https://doi.org/10.1145/3622842},
+doi = {10.1145/3622842},
+abstract = {Attack surface reduction is a security technique that secures the operating system by removing the unnecessary code or features of a program. By restricting the system calls that programs can use, the system call sandbox is able to reduce the exposed attack surface of the operating system and prevent attackers from damaging it through vulnerable programs. Ideally, programs should only retain access to system calls they require for normal execution. Many researchers focus on adopting static analysis to automatically restrict the system calls for each program. However, these methods do not adjust the restriction policy along with program execution. Thus, they need to permit all system calls required for program functionalities. We observe that some system calls, especially security-sensitive ones, are used a few times in certain stages of a program’s execution and then never used again. This motivates us to minimize the set of required system calls dynamically. In this paper, we propose , which gradually disables access to unnecessary system calls throughout the program’s execution. To accomplish this, we utilize partial order analysis to transform the program into a partially ordered graph, which enables efficient identification of the necessary system calls at any given point during program execution. Once a system call is no longer required by the program, can restrict it immediately. To evaluate , we applied it to seven widely-used programs with an average of 615 KLOC, including web servers and databases. With partial order analysis, restricts an average of 23.50, 16.86, and 15.89 more system calls than the state-of-the-art Chestnut, Temporal Specialization, and the configuration-aware sandbox, C2C, respectively. For mitigating malicious exploitations, on average, defeats 83.42\% of 1726 exploitation payloads with only a 5.07\% overhead.},
+journal = {ACM SIGPLAN International Conference on Object-Oriented Programming Systems, Languages, and Applications (OOPSLA)},
+month = oct,
+articleno = {266},
+numpages = {28},
+selected={true},
+keywords = {Attack Surface Reduction, Program Analysis, System Call Sandbox},
+preview={dynbox.png}
+}
