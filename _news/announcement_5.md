@@ -5,6 +5,6 @@ inline: true
 related_posts: false
 ---
 
-Our significant work :star-struck: on sandboxing program with dynamic syscall policies is accepted by OOPSLA‘23.
+Our significant work :rocket: on sandboxing program with dynamic syscall policies is accepted by OOPSLA‘23.
 
 
