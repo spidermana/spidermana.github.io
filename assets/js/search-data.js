@@ -35,11 +35,18 @@ ninja.data = [{
           title: 'Our research on protecting deserialization procedures of Java applications is accepted :sparkles: by...',
           description: "",
           section: "News",},{
+        id: 'social-academia_edu',
+        title: 'Academia_edu',
+        section: 'Socials',
+        handler: () => {
+          window.open("", "_blank");
+        },
+      },{
         id: 'social-email',
         title: 'email',
         section: 'Socials',
         handler: () => {
-          window.open("mailto:%79%69%77%65%6E.%78%75@%65%70%66%6C.%63%68", "_blank");
+          window.open("mailto:%78%75%79%69%77%65%6E%31%34@%67%6D%61%69%6C.%63%6F%6D", "_blank");
         },
       },{
         id: 'social-github',
