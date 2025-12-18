@@ -2,7 +2,7 @@
 # the commented lines are the default social media links supported by the template
 # the socials will be displayed in the order they are defined here
 
-# academia_edu:  your organization and your username Ex. https://organization.academia.edu/UserName
+academia_edu: https://people.epfl.ch/yiwen.xu?lang=en
 #  organization: princeton # your organization as appears in the subdomain
 #  username:  AlbertEinstein # your username
 # acm_id: # your dl.acm.org/profile/id
@@ -10,7 +10,7 @@
 # bluesky_url: # your bluesky URL
 # dblp_url: # your DBLP profile url
 # discord_id: # your discord id (18-digit unique numerical identifier)
-email: yiwen.xu@epfl.ch # your email address
+email: xuyiwen14@gmail.com # your email address
 # facebook_id: # your facebook id
 # flickr_id: # your flickr id
 github_username: spidermana # your GitHub user name
