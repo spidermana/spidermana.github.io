@@ -2,7 +2,7 @@
 # the commented lines are the default social media links supported by the template
 # the socials will be displayed in the order they are defined here
 
-academia_edu: https://people.epfl.ch/yiwen.xu?lang=en
+# academia_edu: https://people.epfl.ch/yiwen.xu?lang=en
 #  organization: princeton # your organization as appears in the subdomain
 #  username:  AlbertEinstein # your username
 # acm_id: # your dl.acm.org/profile/id
@@ -54,3 +54,7 @@ rss_icon: false # comment this line to hide the RSS icon
 #   logo: https://www.alberteinstein.com/wp-content/uploads/2024/03/cropped-favicon-192x192.png # can be png, svg, jpg
 #   title: Custom Social
 #   url: https://www.alberteinstein.com/
+epfl:
+  logo: https://www.epfl.ch/wp-content/themes/wp-theme-2018/assets/svg/epfl-logo.svg
+  title: EPFL
+  url: https://people.epfl.ch/yiwen.xu?lang=en
