@@ -35,13 +35,6 @@ ninja.data = [{
           title: 'Our research on protecting deserialization procedures of Java applications is accepted :sparkles: by...',
           description: "",
           section: "News",},{
-        id: 'social-academia_edu',
-        title: 'Academia_edu',
-        section: 'Socials',
-        handler: () => {
-          window.open("", "_blank");
-        },
-      },{
         id: 'social-email',
         title: 'email',
         section: 'Socials',
@@ -61,6 +54,13 @@ ninja.data = [{
         section: 'Socials',
         handler: () => {
           window.open("/feed.xml", "_blank");
+        },
+      },{
+        id: 'social-epfl',
+        title: 'Epfl',
+        section: 'Socials',
+        handler: () => {
+          window.open("https://people.epfl.ch/yiwen.xu?lang=en", "_blank");
         },
       },{
       id: 'light-theme',
