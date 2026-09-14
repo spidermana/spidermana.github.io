@@ -30,6 +30,6 @@ I’m a second-year PhD student at EPFL, where I hang out in the [HexHive](https
 
 Before this academic adventure, I worked as a Software Engineer at Alibaba Cloud (Aliyun) from mid-2023 to mid-2025. I got my Master’s degree at Tsinghua University, where I was lucky to be supervised by [Prof. Yu Jiang](https://sites.google.com/site/jiangyu198964) in the Software System Security Assurance Group.
 
-I enjoy picking apart malicious code (Malware Analysis & Mitigation), poking firmware until it breaks (Firmware Fuzzing), and more recently exploring the interleaving of operating-system and programming-language techniques in security.
+I enjoy picking apart malicious code (Malware Analysis & Mitigation), poking firmware until it breaks (Fuzzing), and more recently **exploring the interleaving of operating-system and programming-language techniques in security**.
 
 When I’m not staring at my crash logs or wrestling with bugs, you’ll probably find me somewhere outdoors. I’m a causal hiker, a scuba diver, and a beginner skier, who is always happy to trade the keyboard for mountains, oceans, or snow.
