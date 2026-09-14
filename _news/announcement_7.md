@@ -6,5 +6,4 @@ related_posts: false
 ---
 
 ScHMuzz, our fuzzer for memory-safety violations in REE–TEE shared memory, has been accepted :tada: at NDSS'27. 
-
-<sub style="color : #CE5BD2;">It uncovered six 0-day TOCTTOU vulnerabilities in TAs, earning acknowledgments and bug bounties from TEE vendors including Samsung and Xiaomi.</sub>
+<text style="color : #d25b5b;">(With six 0-day vulnerabilities in TAs and bug bounty awards from TEE vendors, Samsung, and Xiaomi)</text>
