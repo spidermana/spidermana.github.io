@@ -34,6 +34,9 @@ ninja.data = [{
           section: "News",},{id: "news-our-research-on-protecting-deserialization-procedures-of-java-applications-is-accepted-sparkles-by-ndss-24",
           title: 'Our research on protecting deserialization procedures of Java applications is accepted :sparkles: by...',
           description: "",
+          section: "News",},{id: "news-schmuzz-our-fuzzer-for-memory-safety-violations-in-ree-tee-shared-memory-has-been-accepted-tada-at-ndss-27-it-uncovered-six-0-day-tocttou-vulnerabilities-in-tas-earning-acknowledgments-and-bug-bounties-from-tee-vendors-including-samsung-and-xiaomi",
+          title: 'ScHMuzz, our fuzzer for memory-safety violations in REE–TEE shared memory, has been accepted...',
+          description: "",
           section: "News",},{
         id: 'social-email',
         title: 'email',
